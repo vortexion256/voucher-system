@@ -511,7 +511,7 @@ export default function Home() {
               fontWeight: "bold",
               color: "#333"
             }}>
-              BUY VOUCHER USING MOBILE MONEY
+              X BUY VOUCHER USING MOBILE MONEY
             </h1>
           </div>
 
@@ -1044,7 +1044,7 @@ export default function Home() {
                 textAlign: "center",
                 maxWidth: "280px"
               }}>
-                Save this code! You can use it to Login to ENOX SUPER FAST WiFi
+                Save this code! You can use it to Login to ENOX SUPER FAST WiFi HOTSPOT
               </p>
             </div>
           )}
