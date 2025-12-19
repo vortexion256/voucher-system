@@ -30,7 +30,7 @@ export async function POST(request) {
 
     // MarzPay API configuration
     const apiUrl = process.env.MARZ_API_BASE_URL || "https://wallet.wearemarz.com/api/v1";
-    const base64Auth = process.env.MARZ_BASE64_AUTH || "bWFyel80VEx3b05XUWVnY3hPRmVBOjdtSzZzUmdoNTJERkxaYmh6VDFNeFVteERFVEhuOW1q";
+    const base64Auth = process.env.MARZ_BASE64_AUTH || "bWFyel9hMFRBRmlHaHk5M1ZCRmNZOmtXVlRTcnRtVnpsM0lVQU5rd21DVnlzSWJ3dE9BYm1Z";
     
     console.log(`🌐 Checking MarzPay API: ${apiUrl}/collect-money/${transactionUuid}`);
     

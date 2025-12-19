@@ -35,14 +35,15 @@ import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyC-XP7J5-bCMCBhFo7RvQWB909HYXAD90Y",
-  authDomain: "vsystem-2d0c3.firebaseapp.com",
-  projectId: "vsystem-2d0c3",
-  storageBucket: "vsystem-2d0c3.firebasestorage.app",
-  messagingSenderId: "87982211879",
-  appId: "1:87982211879:web:07974f644611f000b81f02",
-  measurementId: "G-198CHHNLCF"
+  apiKey: "AIzaSyA-44DQ0o492HsxqDkH6kvy6H08OMMBNMU",
+  authDomain: "axion256system.firebaseapp.com",
+  projectId: "axion256system",
+  storageBucket: "axion256system.firebasestorage.app",
+  messagingSenderId: "718860459380",
+  appId: "1:718860459380:web:275f372555ebb726f12021",
+  measurementId: "G-QTBDXPXRY4"
 };
+
 
 // Initialize Firebase app (safe on server & client)
 const app = initializeApp(firebaseConfig);

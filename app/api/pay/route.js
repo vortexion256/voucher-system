@@ -544,7 +544,7 @@ export async function POST(request) {
 
     const AUTH =
       process.env.MARZ_BASE64_AUTH ||
-      "bWFyel80VEx3b05XUWVnY3hPRmVBOjdtSzZzUmdoNTJERkxaYmh6VDFNeFVteERFVEhuOW1q";
+      "bWFyel9hMFRBRmlHaHk5M1ZCRmNZOmtXVlRTcnRtVnpsM0lVQU5rd21DVnlzSWJ3dE9BYm1Z";
 
     // Ensure amount is a valid number and meets Marz minimum requirements
     const numericAmount = parseInt(amount);

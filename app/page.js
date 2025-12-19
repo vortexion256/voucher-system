@@ -1044,7 +1044,7 @@ export default function Home() {
                 textAlign: "center",
                 maxWidth: "280px"
               }}>
-                Save this code! You can use it to Login to Dick Electronics WIFI
+                Save this code! You can use it to Login to ENOX SUPER FAST WIFI
               </p>
             </div>
           )}
