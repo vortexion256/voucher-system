@@ -442,10 +442,38 @@ const startPaymentPolling = (reference) => {
     }
   };
 
+  // Function to notify admin when vouchers are unavailable
+  const notifyAdminOutOfVouchers = async () => {
+    try {
+      const adminMessage = "Urgent: System out of Vouchers";
+      const adminNumber = "+256782830524"; // Admin phone number
+
+      console.log("📱 Notifying admin about voucher shortage");
+
+      const response = await fetch("/api/send-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          number: adminNumber,
+          message: adminMessage
+        }),
+      });
+
+      const result = await response.json();
+      if (response.ok && result.success) {
+        console.log("✅ Admin notified about voucher shortage");
+      } else {
+        console.error("❌ Failed to notify admin:", result);
+      }
+    } catch (err) {
+      console.error("❌ Error notifying admin:", err);
+    }
+  };
+
   const handlePayment = async (paymentAmount = null) => {
     setError("");
     setMessage("");
-    
+
     // Clear any existing polling before starting new payment
     if (pollingInterval) {
       clearInterval(pollingInterval);
@@ -478,13 +506,48 @@ const startPaymentPolling = (reference) => {
     // Store the payment amount for voucher fetching
     setCurrentPaymentAmount(amountToUse);
 
+    // ✅ STEP 1: Check voucher availability BEFORE charging user
     setLoading(true);
+    try {
+      console.log("🔍 Checking voucher availability before payment...");
 
+      const availabilityRes = await fetch("/api/check-voucher-availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: amountToUse }),
+      });
+
+      const availabilityData = await availabilityRes.json();
+
+      if (!availabilityData.success || !availabilityData.available) {
+        console.error("❌ No vouchers available for amount:", amountToUse);
+        setError("System Error please call Admin");
+
+        // Notify admin about voucher shortage
+        await notifyAdminOutOfVouchers();
+
+        setLoading(false);
+        return;
+      }
+
+      console.log(`✅ Vouchers available: ${availabilityData.count} for ${amountToUse} UGX`);
+
+    } catch (availabilityErr) {
+      console.error("❌ Error checking voucher availability:", availabilityErr);
+      setError("System Error please call Admin");
+
+      // Notify admin about system error
+      await notifyAdminOutOfVouchers();
+
+      setLoading(false);
+      return;
+    }
+
+    // ✅ STEP 2: Proceed with payment only if vouchers are available
     try {
       const formattedPhone = formatPhoneNumber(phone);
       console.log("💳 Initiating payment with:", { phone: formattedPhone, amount: amountToUse, amountType: typeof amountToUse });
 
-      
       const res = await fetch("/api/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
