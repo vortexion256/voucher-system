@@ -511,7 +511,7 @@ export default function Home() {
               fontWeight: "bold",
               color: "#333"
             }}>
-              YOU BUY WIFI VOUCHER USING MOBILE MONEY
+              YOU BUY WIFI VOUCHER USING your MOBILE MONEY
             </h1>
           </div>
 
