@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { updatePaymentStatus } from "./lib/storage.js";
-import { addDoc, collection } from "firebase/firestore";
+import { addDoc, collection, query, where, getDocs, limit } from "firebase/firestore";
 // import { db } from "@/lib/firebase.js";
 import { db } from "./lib/firebase.js"; // relative path
 
@@ -25,6 +25,18 @@ export default function Home() {
   const [debugMode, setDebugMode] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [pollingInterval, setPollingInterval] = useState(null);
+
+  // Helper function to check if transaction has already been logged
+  const hasTransactionBeenLogged = async (reference) => {
+    try {
+      const q = query(collection(db, "transactions"), where("reference", "==", reference), limit(1));
+      const snapshot = await getDocs(q);
+      return !snapshot.empty;
+    } catch (error) {
+      console.error("Error checking transaction existence:", error);
+      return false; // If check fails, allow logging to avoid missing transactions
+    }
+  };
 
   // Phone number validation for Uganda
   const validatePhoneNumber = (phone) => {
@@ -144,15 +156,17 @@ export default function Home() {
 
           // ✅ Save successful transaction to Firestore
           try {
-            await addDoc(collection(db, "transactions"), {
-              phone,
-              amount: currentPaymentAmount || amount,
-              voucher: data.data.voucher,
-              status: "successful",
-              reference,
-              createdAt: new Date(),
-            });
-            console.log("✅ Transaction saved to Firestore");
+            if (!await hasTransactionBeenLogged(reference)) {
+              await addDoc(collection(db, "transactions"), {
+                phone,
+                amount: currentPaymentAmount || amount,
+                voucher: data.data.voucher,
+                status: "successful",
+                reference,
+                createdAt: new Date(),
+              });
+              console.log("✅ Transaction saved to Firestore");
+            }
           } catch (fireErr) {
             console.error("❌ Failed to save transaction:", fireErr);
           }
