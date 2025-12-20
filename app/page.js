@@ -190,17 +190,19 @@ export default function Home() {
           setMessage("Payment completed! Your voucher is ready.");
           setPaymentReference(null); // clear after completion
 
-          // ✅ Save successful transaction to Firestore
+          // ✅ Save successful transaction to Firestore 1000ugx
           try {
-            await addDoc(collection(db, "transactions"), {
-              phone,
-              amount: voucherAmount,
-              voucher: voucherData.voucher,
-              status: "successful",
-              reference,
-              createdAt: new Date(),
-            });
-            console.log("✅ Transaction saved to Firestore");
+            if (!await hasTransactionBeenLogged(reference)) {
+              await addDoc(collection(db, "transactions"), {
+                phone,
+                amount: voucherAmount,  // This should be the correct amount from the voucher
+                voucher: voucherData.voucher,
+                status: "successful",
+                reference,
+                createdAt: new Date(),
+              });
+              console.log("✅ Transaction saved to Firestore");
+            }
           } catch (fireErr) {
             console.error("❌ Failed to save transaction:", fireErr);
           }
