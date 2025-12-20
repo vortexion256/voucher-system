@@ -71,9 +71,25 @@ export async function POST(request) {
           
           if (marzData.success && marzData.data.isComplete) {
             console.log(`✅ Payment completed via MarzPay API: ${marzData.data.internalStatus}`);
-            
+
             // Update our storage with the new status
             if (marzData.data.internalStatus === 'successful' && marzData.data.shouldGenerateVoucher) {
+              // Check if voucher already assigned to prevent duplicates
+              const existingVoucher = await getVoucher(reference);
+              if (existingVoucher) {
+                console.log(`🎫 Voucher already assigned for reference ${reference}, skipping duplicate assignment`);
+                return Response.json({
+                  success: true,
+                  data: {
+                    status: "successful",
+                    voucher: existingVoucher.voucher,
+                    amount: payment.amount,
+                    phone: payment.phone,
+                    completedAt: existingVoucher.updatedAt
+                  }
+                });
+              }
+
               // Fetch an unused voucher for the amount from Firestore and mark as used
               const vouchersRef = collection(db, "vouchers");
               const q = query(
@@ -119,15 +135,16 @@ export async function POST(request) {
                 }
               } else {
                 console.warn(`⚠️ No available vouchers in Firestore for amount: ${payment.amount} UGX`);
-                // Update status successful without voucher; client may fallback to /api/get-voucher
+                // Update status successful without voucher
                 await updatePaymentStatus(reference, "successful");
                 return Response.json({
                   success: true,
                   data: {
                     status: "successful",
-                    voucher: null,
+                    voucher: null, // Explicitly indicate no voucher assigned
                     amount: payment.amount,
                     phone: payment.phone,
+                    completedAt: new Date().toISOString(),
                   },
                 });
               }

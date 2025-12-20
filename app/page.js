@@ -155,7 +155,7 @@ const saveTransactionOnce = async ({
   setCheckingPayment(true);
   try {
     console.log(`🔍 Checking payment status for reference: ${reference}`);
-    
+
     const res = await fetch("/api/check-payment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -174,9 +174,12 @@ const saveTransactionOnce = async ({
       console.log(`📊 Current status: ${status}`);
 
       if (status === "successful") {
-        console.log("✅ Payment marked successful, fetching voucher...");
+        console.log("✅ Payment marked successful");
 
-        // If API already returned a voucher, use it directly
+        // Determine the voucher amount
+        const voucherAmount = currentPaymentAmount || amount;
+
+        // If API returned a voucher, use it directly
         if (data.data && data.data.voucher) {
           setVoucherOnce(data.data.voucher);
           setMessage("Payment completed! Your voucher is ready.");
@@ -184,63 +187,26 @@ const saveTransactionOnce = async ({
 
           // ✅ Save successful transaction to Firestore
           try {
-           
               await saveTransactionOnce({
                 reference,
                 phone,
                 amount: voucherAmount,
-                voucher: voucherData.voucher,
-                status: "successful",
-              });
-
-              console.log("✅ Transaction saved to Firestore");
-            
-          } catch (fireErr) {
-            console.error("❌ Failed to save transaction:", fireErr);
-          }
-          return true;
-        }
-
-        // Otherwise fetch from vouchers inventory using stored payment amount
-        const voucherAmount = currentPaymentAmount || amount; // Use stored payment amount or fallback to state
-        console.log("🎫 Fetching voucher for amount:", voucherAmount);
-
-        const voucherRes = await fetch("/api/get-voucher", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: voucherAmount, phone }),
-        });
-
-        const voucherData = await voucherRes.json();
-
-        if (voucherData.success) {
-          setVoucherOnce(voucherData.voucher);
-          setMessage("Payment completed! Your voucher is ready.");
-          setPaymentReference(null); // clear after completion
-
-          // ✅ Save successful transaction to Firestore 1000ugx
-          try {
-          
-              await saveTransactionOnce({
-                reference,
-                phone,
-                amount: currentPaymentAmount || amount,
                 voucher: data.data.voucher,
                 status: "successful",
               });
 
               console.log("✅ Transaction saved to Firestore");
-            
           } catch (fireErr) {
             console.error("❌ Failed to save transaction:", fireErr);
           }
-
-          return true; // Payment completed
-        } else {
-          console.error(`❌ Voucher assignment failed: ${voucherData.message || 'Unknown error'}`);
-          setError(`Payment completed for ${voucherAmount} UGX, but no voucher available for this amount. Please contact support with reference: ${reference}`);
           return true;
         }
+
+        // If no voucher returned, this means check-payment API couldn't assign one
+        // This should not happen with our consolidated approach, but handle gracefully
+        console.error(`❌ Payment successful but no voucher assigned by check-payment API`);
+        setError(`Payment completed for ${voucherAmount} UGX, but voucher assignment failed. Please contact support with reference: ${reference}`);
+        return true;
 
       } else if (status === "failed") {
         console.log("❌ Payment failed.");
