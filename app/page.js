@@ -190,7 +190,7 @@ const saveTransactionOnce = async ({
               await saveTransactionOnce({
                 reference,
                 phone,
-                amount: voucherAmount,
+                amount: data.data.amount,
                 voucher: data.data.voucher,
                 status: "successful",
               });
