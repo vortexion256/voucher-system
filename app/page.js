@@ -174,7 +174,7 @@ const saveTransactionOnce = async ({
 
           // ✅ Save successful transaction to Firestore
           try {
-            if (!await hasTransactionBeenLogged(reference)) {
+           
               await saveTransactionOnce({
                 reference,
                 phone,
@@ -184,7 +184,7 @@ const saveTransactionOnce = async ({
               });
 
               console.log("✅ Transaction saved to Firestore");
-            }
+            
           } catch (fireErr) {
             console.error("❌ Failed to save transaction:", fireErr);
           }
@@ -210,7 +210,7 @@ const saveTransactionOnce = async ({
 
           // ✅ Save successful transaction to Firestore 1000ugx
           try {
-            if (!await hasTransactionBeenLogged(reference)) {
+          
               await saveTransactionOnce({
                 reference,
                 phone,
@@ -220,7 +220,7 @@ const saveTransactionOnce = async ({
               });
 
               console.log("✅ Transaction saved to Firestore");
-            }
+            
           } catch (fireErr) {
             console.error("❌ Failed to save transaction:", fireErr);
           }
