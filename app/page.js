@@ -6,6 +6,8 @@ import { updatePaymentStatus } from "./lib/storage.js";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 // import { db } from "@/lib/firebase.js";
 import { db } from "./lib/firebase.js"; // relative path
+// import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+// import { db } from "./lib/firebase";
 
 
 
@@ -117,11 +119,14 @@ const saveTransactionOnce = async ({
   status,
   voucher = null,
 }) => {
-  if (!reference) return;
+  if (!reference) {
+    console.error("❌ Cannot save transaction: Missing reference");
+    return;
+  }
 
   try {
     await setDoc(
-      doc(db, "transactions", reference), // 🔐 reference = doc ID
+      doc(db, "transactions", reference), // Using reference as document ID
       {
         reference,
         phone,
@@ -130,15 +135,20 @@ const saveTransactionOnce = async ({
         voucher,
         createdAt: serverTimestamp(),
       },
-      { merge: false } // overwrite-safe
+      { merge: false } // Prevents overwriting existing documents
     );
-
-    console.log("✅ Transaction saved safely:", reference);
+    console.log("✅ Transaction saved successfully:", reference);
   } catch (err) {
-    console.error("❌ Failed to save transaction:", err);
+    if (err.code === 'permission-denied') {
+      console.error("❌ Permission denied. Check your Firebase rules.");
+    } else if (err.code === 'not-found') {
+      console.error("❌ Firestore database not found. Check your Firebase configuration.");
+    } else {
+      console.error("❌ Failed to save transaction:", err);
+    }
+    throw err; // Re-throw to handle in the calling function
   }
 };
-
 
 
   const checkPaymentStatus = async (reference) => {
