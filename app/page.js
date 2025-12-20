@@ -511,7 +511,7 @@ export default function Home() {
               fontWeight: "bold",
               color: "#333"
             }}>
-              X BUY VOUCHER USING MOBILE MONEY
+              YOU BUY VOUCHER USING MOBILE MONEY
             </h1>
           </div>
 
