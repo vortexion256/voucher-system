@@ -1,0 +1,620 @@
+/* base style */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  height: 100%;
+  padding: 0px;
+  margin: 0px;
+  font-size: 14px;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC,
+    Hiragino Sans GB, Microsoft YaHei, Helvetica Neue, Helvetica, Arial,
+    sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol;
+}
+
+
+/* common component style */
+.hide {
+  display: none !important;
+}
+
+.rj-btn {
+  cursor: pointer;
+  text-align: center;
+  position: relative;
+  background: rgba(0, 0, 0, 0.1);
+  border: 0.5px solid rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  height: 48px;
+  line-height: 48px !important;
+  width: 100%;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  color: #fff;
+  font-size: 12px;
+}
+
+.rj-btn.rj-btn-primary {
+  background: rgb(0, 102, 255);
+  border-color: rgb(0, 102, 255);
+}
+
+.rj-input {
+  color: rgb(255, 255, 255);
+  border-color: rgb(255, 255, 255);
+}
+
+.rj-input::-webkit-input-placeholder {
+  color: rgba(255, 255, 255 0.25);
+}
+
+.rj-input::-moz-placeholder {
+  color: rgba(255, 255, 255 0.25);
+}
+
+.rj-input:-ms-input-placeholder {
+  color: rgba(255, 255, 255 0.25);
+}
+
+
+.dropdown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  line-height: 32px;
+}
+
+.dropdown-label {
+  color: white;
+  user-select: none;
+}
+
+.dropdown-arrow {
+  margin-left: 8px;
+  transition: transform 0.5s ease; 
+  display: inline-block;
+}
+
+.dropdown.actived .dropdown-menu {
+  display: block;
+}
+.dropdown.actived .dropdown-arrow{
+  transform: rotate(180deg);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background-color: #0d1117;
+  border: 0.5px solid rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+  display: none;
+  line-height: 18px;
+}
+
+.dropdown-menu a {
+  display: block;
+  padding: 8px 16px;
+  text-decoration: none;
+  color: white;
+  text-align: right;
+}
+
+.dropdown-menu a:hover {
+  background-color: #1b2631;
+}
+
+/* page style */
+.language-select {
+  position: fixed;
+  right: 24px;
+  top: 24px;
+  z-index: 10;
+  cursor: pointer;
+}
+
+.body-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.body-loading {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  left: 0;
+  position: fixed;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  z-index: 2;
+}
+
+.body-background {
+  position: fixed;
+  left: 0;
+  top: 0px;
+  bottom: -1px;
+  right: 0;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+}
+
+.body-background-mask {
+  position: fixed;
+  top: 0px;
+  bottom: -1px;
+  min-height: 100%;
+  width: 100%;
+}
+
+.body-content-wrapper {
+  align-items: center;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%
+}
+
+
+.body-content {
+  align-items: center;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: start;
+  flex: 1;
+  width: 100%;
+  position: relative;
+  box-sizing: border-box;
+}
+
+
+.content-logo-wrapper {
+  width: 40%;
+  margin: 0px 30%;
+  display: block;
+  margin-top: 70px;
+  margin-bottom: 16px;
+  padding: 0px;
+}
+
+.content-logo {
+  width: 100%;
+  display: block;
+}
+
+
+.login-form-wrapper .rj-input {
+  color: #fff;
+  margin-bottom: 10px;
+}
+
+.login-msg-wrapper {
+  width: 70%;
+  text-align: center;
+  margin: 0px 15%;
+}
+
+.login-msg-wrapper p {
+  display: none;
+  overflow-wrap: break-word;
+  word-break: normal;
+  word-wrap: break-word;
+  white-space: normal;
+  font-size: 14px;
+  line-height: 18px;
+  margin: 0;
+  color: red;
+}
+
+.login-form-wrapper {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  position: relative;
+  box-sizing: border-box;
+  /* margin: 10px 2.5%; */
+  line-height: 20px;
+  font-size: 12px;
+}
+
+.main-title {
+  text-align: center;
+  margin-top: 20px;
+  margin-bottom: 24px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.main-title h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  line-height: 1.2;
+  word-wrap: break-word;
+}
+
+.main-title p {
+  font-size: 16px;
+  margin: 0;
+  opacity: 0.8;
+  font-weight: 400;
+}
+
+.login-form-title {
+  display: block;
+  text-align: center;
+  font-weight: 600;
+  text-transform: capitalize;
+  font-size: 28px;
+  line-height: 28px;
+  margin-bottom: 16px;
+  margin-top: 16px;
+}
+
+.login-form-wrapper .rj-input {
+  border: none;
+  width: 95%;
+  border-bottom: 1px solid #fff;
+  background: none;
+  outline: none;
+  line-height: 30px;
+  height: 30px;
+  /* margin-top: 10px; */
+  box-sizing: border-box;
+}
+
+
+.login-split-line {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  margin: 16px 0;
+}
+
+.login-split-line span {
+  margin: 0 10px;
+  color: #fff;
+}
+
+.login-split-line .left,
+.login-split-line .right {
+  width: 50%;
+  height: 1px;
+  background-color: #fff;
+}
+
+
+.login-form-wrapper .rj-input {
+  width: 100%;
+  height: 48px;
+  line-height: 48px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #fff;
+  color: rgba(255, 255, 255, 0.6);
+  border-radius: 25px;
+  margin-bottom: 16px;
+}
+
+.content-decoration-wrapper {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.login-wrapper {
+  align-items: center;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 32px;
+  width: 100%;
+}
+
+.login-form-wrapper {
+  width: 100%;
+  text-align: left;
+}
+
+.login-msg {
+  color: red;
+  text-align: center;
+}
+
+.login-wrapper .rj-btn {
+  margin-bottom: 16px;
+}
+
+.login-wrapper .login-btn {
+  margin-top: 32px;
+  margin-bottom: 0;
+
+  background: linear-gradient(135deg, #D93F87 0%, #44328D 100%);
+  border: none;
+
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 18px;
+
+  border-radius: 12px;
+  height: 48px;
+  line-height: 48px;
+
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.login-wrapper .login-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px rgba(68, 50, 141, 0.45);
+}
+
+
+.other-btn-wrapper {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: start;
+  width: 100%;
+}
+
+.login-split-line {
+  width: 100%;
+}
+
+/* >= 1200px pc */
+@media screen and (min-width: 1025px) {
+  .rj-btn {
+    font-size: 14px;
+  }
+
+  .body-wrapper {
+    font-size: 14px;
+    height: 100vh;
+    min-height: 760px;
+  }
+
+  .login-form-wrapper {
+    width: 100%;
+    max-width: 400px;
+    text-align: left;
+  }
+
+  .login-wrapper {
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 32px;
+    height: auto;
+    max-width: 650px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 40px;
+  }
+
+  .body-content {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 100px 40px 40px 40px;
+    position: relative;
+  }
+
+  .body-content-wrapper {
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 40px;
+  }
+
+  .login-msg {
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .login-split-line {
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .rj-btn {
+    background: none;
+    border: 0.5px solid rgba(255, 255, 255, 0.7);
+    border-radius: 8px;
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .login-form-wrapper .rj-input {
+    width: 100% !important;
+    max-width: 400px;
+  }
+
+  .body-background-mask {
+    background: rgba(255, 255, 255, 0.1) !important;
+    opacity: 1 !important;
+  }
+
+  .main-title {
+    margin-top: 40px;
+  }
+
+  /* Payment section desktop styles */
+  .payment-section {
+    width: 100%;
+    max-width: 650px;
+  }
+
+  .payment-iframe iframe {
+    height: 600px;
+  }
+
+
+  
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+/* Make iframe behave like normal page content */
+.iframe-inline {
+  width: 100%;
+  display: block;
+}
+
+/* Let iframe fill width and auto-height visually */
+.iframe-inline iframe {
+  width: 100%;
+  height: 85vh; /* feels inline */
+  border: none;
+  display: block;
+}
+
+/* VERY IMPORTANT: remove overflow clipping from parents */
+.body-content,
+.body-content-wrapper,
+.content-decoration-wrapper {
+  overflow: visible !important;
+  height: auto !important;
+}
+
+/* Payment Section Styles */
+.payment-section {
+  margin-top: 24px;
+}
+
+.payment-split-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 20px 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+}
+
+.payment-split-line span:not(.left):not(.right) {
+  margin: 0 15px;
+  font-weight: 500;
+}
+
+.payment-split-line .left,
+.payment-split-line .right {
+  width: 40%;
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.payment-iframe iframe {
+  width: 100%;
+  height: 85vh;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive adjustments for payment iframe */
+@media screen and (min-width: 1025px) {
+  .payment-iframe iframe {
+    height: 500px;
+  }
+}
+
+@media screen and (max-width: 1024px) {
+  .payment-iframe iframe {
+    height: 70vh;
+  }
+}
+
+/* Mobile specific styles */
+@media screen and (max-width: 768px) {
+  .body-wrapper {
+    padding: 20px;
+  }
+
+  .login-wrapper {
+    padding: 20px !important;
+    margin: 0;
+    width: 100%;
+    max-width: none;
+  }
+
+  .login-form-wrapper {
+    width: 100% !important;
+  }
+
+  .rj-btn {
+    width: 100% !important;
+  }
+
+  .login-form-wrapper .rj-input {
+    width: 100% !important;
+  }
+
+  .login-msg {
+    width: 100% !important;
+  }
+
+  .login-split-line {
+    width: 100% !important;
+  }
+
+  .payment-section {
+    width: 100%;
+  }
+
+  .payment-iframe iframe {
+    height: 85vh;
+  }
+
+  .language-select {
+    right: 16px;
+    top: 16px;
+    position: fixed;
+    z-index: 10;
+  }
+
+  .main-title h1 {
+    font-size: 24px;
+  }
+
+  .main-title p {
+    font-size: 14px;
+  }
+}
+
+
+
+
+
