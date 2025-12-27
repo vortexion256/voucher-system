@@ -673,7 +673,7 @@ const startPaymentPolling = (reference) => {
               fontWeight: "bold",
               color: "#333"
             }}>
-              YOU BUY ENOX WIFI VOUCHER USING MOBILE MONEY
+              BUY WIFI VOUCHER USING MOBILE MONEY
             </h1>
           </div>
 
@@ -749,8 +749,7 @@ const startPaymentPolling = (reference) => {
                   width: "100%"
                 }}>
                   <div style={{ color: "white", textAlign: "left" }}>
-                    <div style={{ fontSize: "0.875rem", fontWeight: "500" }}>4HRS</div>
-                    <div style={{ fontSize: "1rem", fontWeight: "600", marginTop: "0.25rem" }}>UGX 500</div>
+                    <div style={{ fontSize: "1rem", fontWeight: "600" }}>4HRS - UGX 500</div>
                   </div>
                   <button
                     onClick={() => {
@@ -794,8 +793,7 @@ const startPaymentPolling = (reference) => {
                   width: "100%"
                 }}>
                   <div style={{ color: "white", textAlign: "left" }}>
-                    <div style={{ fontSize: "0.875rem", fontWeight: "500" }}>24HRS</div>
-                    <div style={{ fontSize: "1rem", fontWeight: "600", marginTop: "0.25rem" }}>UGX 1,000</div>
+                    <div style={{ fontSize: "1rem", fontWeight: "600" }}>24HRS - UGX 1,000</div>
                   </div>
                   <button
                     onClick={() => {
@@ -828,7 +826,8 @@ const startPaymentPolling = (reference) => {
                   </button>
                 </div>
 
-                {/* 3days - 2500 */}
+                {/* 3days - 2500 - COMMENTED OUT TEMPORARILY */}
+                {/*
                 <div style={{
                   display: "flex",
                   alignItems: "center",
@@ -872,6 +871,7 @@ const startPaymentPolling = (reference) => {
                     BUY
                   </button>
                 </div>
+                */}
 
               </div>
             </div>
@@ -989,6 +989,15 @@ const startPaymentPolling = (reference) => {
                   backgroundClip: "text"
                 }}>
                   <span>Processing Payment</span>
+                  <p style={{
+                    margin: "0.5rem 0 0 0",
+                    fontSize: "0.875rem",
+                    color: "#666",
+                    textAlign: "center",
+                    fontWeight: "400"
+                  }}>
+                    (confirm purchase on your mobile phone and enter pin, (MARZ INNOVATION LIMITED) for help call the number below
+                  </p>
                   <div style={{
                     display: "flex",
                     gap: "3px"
@@ -1029,7 +1038,8 @@ const startPaymentPolling = (reference) => {
                 Please wait while we confirm your payment...
               </p>
               
-              {/* Status Message */}
+              {/* Status Message - COMMENTED OUT */}
+              {/*
               {statusMessage && (
                 <div style={{
                   marginTop: "1.5rem",
@@ -1046,6 +1056,7 @@ const startPaymentPolling = (reference) => {
                   {statusMessage}
                 </div>
               )}
+              */}
             </div>
           )}
           
