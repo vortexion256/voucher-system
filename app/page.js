@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { updatePaymentStatus } from "./lib/storage.js";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, addDoc, collection } from "firebase/firestore";
 // import { db } from "@/lib/firebase.js";
 import { db } from "./lib/firebase.js"; // relative path
 // import { doc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -61,6 +61,7 @@ export default function Home() {
 
         console.log("📱 SMS: Sending to", { number, messageLength: message.length });
 
+        console.time("📱 SMS API Call");
         const response = await fetch("/api/send-sms", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -68,6 +69,7 @@ export default function Home() {
         });
 
         const result = await response.json();
+        console.timeEnd("📱 SMS API Call");
         console.log("📱 SMS: API Response", result);
 
         if (!response.ok || !result.success) {
@@ -87,8 +89,15 @@ export default function Home() {
 
   // Helper to set voucher only once and stop any ongoing polling
   const setVoucherOnce = (code) => {
-    if (!code) return;
-    if (voucherRef.current) return;
+    console.time(`🎫 Voucher Processing - ${code}`);
+    if (!code) {
+      console.timeEnd(`🎫 Voucher Processing - ${code}`);
+      return;
+    }
+    if (voucherRef.current) {
+      console.timeEnd(`🎫 Voucher Processing - ${code}`);
+      return;
+    }
     voucherRef.current = code;
     setVoucher(code);
     // Stop polling defensively
@@ -97,6 +106,7 @@ export default function Home() {
       setPollingInterval(null);
     }
     setPaymentReference(null);
+    console.timeEnd(`🎫 Voucher Processing - ${code}`);
   };
 
   const formatPhoneNumber = (phone) => {
@@ -125,6 +135,7 @@ const saveTransactionOnce = async ({
   }
 
   try {
+    console.time(`💾 Firestore Save - ${reference}`);
     await setDoc(
       doc(db, "transactions", reference), // Using reference as document ID
       {
@@ -137,6 +148,7 @@ const saveTransactionOnce = async ({
       },
       { merge: false } // Prevents overwriting existing documents
     );
+    console.timeEnd(`💾 Firestore Save - ${reference}`);
     console.log("✅ Transaction saved successfully:", reference);
   } catch (err) {
     if (err.code === 'permission-denied') {
@@ -152,15 +164,17 @@ const saveTransactionOnce = async ({
 
 
   const checkPaymentStatus = async (reference) => {
-  setCheckingPayment(true);
-  try {
-    console.log(`🔍 Checking payment status for reference: ${reference}`);
+    const apiCallId = `api_call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.time(`🔍 Check Payment API - ${apiCallId}`);
+    setCheckingPayment(true);
+    try {
+      console.log(`🔍 Checking payment status for reference: ${reference}`);
 
-    const res = await fetch("/api/check-payment", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reference }),
-    });
+      const res = await fetch("/api/check-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference }),
+      });
 
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`);
@@ -215,6 +229,7 @@ const saveTransactionOnce = async ({
 
         // Optionally save failed attempt
         try {
+          console.time(`💾 Firestore Save Failed - ${reference}`);
           await addDoc(collection(db, "transactions"), {
             phone,
             amount: currentPaymentAmount || amount,
@@ -222,6 +237,7 @@ const saveTransactionOnce = async ({
             reference,
             createdAt: new Date(),
           });
+          console.timeEnd(`💾 Firestore Save Failed - ${reference}`);
           console.log("⚠️ Failed transaction recorded in Firestore.");
         } catch (fireErr) {
           console.error("❌ Failed to record failed transaction:", fireErr);
@@ -245,12 +261,15 @@ const saveTransactionOnce = async ({
     return true; // Stop polling
   } finally {
     setCheckingPayment(false);
+    console.timeEnd(`🔍 Check Payment API - ${apiCallId}`);
   }
 };
 
 
 const startPaymentPolling = (reference) => {
   console.log(`🔄 Starting payment polling for reference: ${reference}`);
+  const pollingSessionId = `polling_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  console.time(`🔄 Total Polling Time - ${pollingSessionId}`);
 
   // Clear any existing polling interval first
   if (pollingInterval) {
@@ -259,8 +278,9 @@ const startPaymentPolling = (reference) => {
 
   setStatusMessage("Payment initiated, waiting for confirmation...");
   let pollCount = 0;
-  const maxPolls = 60; // 2 seconds * 60 = 120 seconds max polling
+  const maxPolls = 24; // 5 seconds * 24 = 120 seconds (2 minutes) max polling
   let pollingActive = true;
+  let pollingCompleted = false; // Flag to ensure timer is only ended once
 
   const pollInterval = setInterval(async () => {
     if (!pollingActive) {
@@ -282,7 +302,7 @@ const startPaymentPolling = (reference) => {
       setStatusMessage("Final attempt, please check your phone for confirmation...");
     }
 
-    // Timeout warning at 30 seconds
+    // Timeout warning at 75 seconds (15 polls * 5 seconds)
     if (pollCount === 15) {
       console.warn("⚠️ Payment taking longer than expected.");
     }
@@ -290,15 +310,18 @@ const startPaymentPolling = (reference) => {
     try {
       const isComplete = await checkPaymentStatus(reference);
 
-      if (isComplete) {
+      if (isComplete && !pollingCompleted) {
         console.log(`✅ Payment completed for reference: ${reference}`);
         setStatusMessage("Payment completed successfully!");
         pollingActive = false;
+        pollingCompleted = true;
         clearInterval(pollInterval);
         setPollingInterval(null);
-      } else if (pollCount >= maxPolls) {
+        console.timeEnd(`🔄 Total Polling Time - ${pollingSessionId}`);
+      } else if (pollCount >= maxPolls && !pollingCompleted) {
         console.log(`⏰ Polling timeout reached for reference: ${reference}`);
         pollingActive = false;
+        pollingCompleted = true;
         clearInterval(pollInterval);
         setPollingInterval(null);
         if (paymentReference === reference) {
@@ -306,16 +329,21 @@ const startPaymentPolling = (reference) => {
           setPaymentReference(null);
           setStatusMessage("Payment timeout - please try again");
           updatePaymentStatus(reference, "failed");
+          console.timeEnd(`🔄 Total Polling Time - ${pollingSessionId}`);
         }
       }
     } catch (err) {
       console.error("❌ Error during payment polling:", err);
-      pollingActive = false;
-      clearInterval(pollInterval);
-      setPollingInterval(null);
-      setError("An error occurred while checking payment status.");
+      if (!pollingCompleted) {
+        pollingActive = false;
+        pollingCompleted = true;
+        clearInterval(pollInterval);
+        setPollingInterval(null);
+        setError("An error occurred while checking payment status.");
+        console.timeEnd(`🔄 Total Polling Time - ${pollingSessionId}`);
+      }
     }
-  }, 2000); // Poll every 2 seconds
+  }, 5000); // Poll every 5 seconds
 
   // Save the interval id so you can clear it later if needed
   setPollingInterval(pollInterval);
@@ -450,6 +478,7 @@ const startPaymentPolling = (reference) => {
 
       console.log("📱 Notifying admin about voucher shortage");
 
+      console.time("📱 Admin SMS API Call");
       const response = await fetch("/api/send-sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -460,6 +489,7 @@ const startPaymentPolling = (reference) => {
       });
 
       const result = await response.json();
+      console.timeEnd("📱 Admin SMS API Call");
       if (response.ok && result.success) {
         console.log("✅ Admin notified about voucher shortage");
       } else {
@@ -471,6 +501,9 @@ const startPaymentPolling = (reference) => {
   };
 
   const handlePayment = async (paymentAmount = null) => {
+    const paymentId = `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.time(`💰 Total Payment Process - ${paymentId}`);
+
     setError("");
     setMessage("");
 
@@ -548,11 +581,13 @@ const startPaymentPolling = (reference) => {
       const formattedPhone = formatPhoneNumber(phone);
       console.log("💳 Initiating payment with:", { phone: formattedPhone, amount: amountToUse, amountType: typeof amountToUse });
 
+      console.time("🔄 Payment API Call");
       const res = await fetch("/api/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: formattedPhone, amount: amountToUse }),
       });
+      console.timeEnd("🔄 Payment API Call");
 
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
@@ -616,6 +651,7 @@ const startPaymentPolling = (reference) => {
       }
     } finally {
       setLoading(false);
+      console.timeEnd(`💰 Total Payment Process - ${paymentId}`);
     }
   };
 
