@@ -735,13 +735,14 @@ const startPaymentPolling = (reference) => {
                     setPhone(e.target.value);
                     setError("");
                   }}
-                  style={{ 
-                    padding: "0.75rem", 
+                  style={{
+                    padding: "0.75rem",
                     width: "100%",
                     border: error ? "2px solid #ff4444" : "2px solid #ddd",
                     borderRadius: "8px",
-                    fontSize: "1rem",
-                    boxSizing: "border-box"
+                    fontSize: "1.2rem",
+                    boxSizing: "border-box",
+                    color: "#000"  // Force black text always, override dark mode
                   }}
                 />
                 {error && (
