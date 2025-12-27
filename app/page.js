@@ -3,11 +3,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { updatePaymentStatus } from "./lib/storage.js";
-import { doc, setDoc, serverTimestamp, collection, addDoc } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 // import { db } from "@/lib/firebase.js";
-// import { db } from "./lib/firebase.js"; // relative path
+import { db } from "./lib/firebase.js"; // relative path
 // import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "./lib/firebase";
+// import { db } from "./lib/firebase";
 
 
 
@@ -90,17 +90,7 @@ export default function Home() {
     if (!code) return;
     if (voucherRef.current) return;
     voucherRef.current = code;
-
-    // ✅ Send voucher code to parent site for auto-login BEFORE displaying voucher
-    if (typeof window !== 'undefined' && window.parent) {
-      window.parent.postMessage({
-        type: 'PAYMENT_SUCCESS',
-        voucherCode: code,
-        sessionId: null // Optional: parent site doesn't seem to use this
-      }, '*'); // Use specific domain in production for security
-    }
-
-    setVoucher(code); // Now display voucher to user after parent gets it
+    setVoucher(code);
     // Stop polling defensively
     if (pollingInterval) {
       clearInterval(pollingInterval);
@@ -165,7 +155,7 @@ const saveTransactionOnce = async ({
   setCheckingPayment(true);
   try {
     console.log(`🔍 Checking payment status for reference: ${reference}`);
-    
+
     const res = await fetch("/api/check-payment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -184,9 +174,12 @@ const saveTransactionOnce = async ({
       console.log(`📊 Current status: ${status}`);
 
       if (status === "successful") {
-        console.log("✅ Payment marked successful, fetching voucher...");
+        console.log("✅ Payment marked successful");
 
-        // If API already returned a voucher, use it directly
+        // Determine the voucher amount
+        const voucherAmount = currentPaymentAmount || amount;
+
+        // If API returned a voucher, use it directly
         if (data.data && data.data.voucher) {
           setVoucherOnce(data.data.voucher);
           setMessage("Payment completed! Your voucher is ready.");
@@ -194,69 +187,26 @@ const saveTransactionOnce = async ({
 
           // ✅ Save successful transaction to Firestore
           try {
-
               await saveTransactionOnce({
                 reference,
                 phone,
-                amount: currentPaymentAmount || amount,
+                amount: data.data.amount,
                 voucher: data.data.voucher,
                 status: "successful",
               });
 
               console.log("✅ Transaction saved to Firestore");
-
           } catch (fireErr) {
             console.error("❌ Failed to save transaction:", fireErr);
           }
           return true;
         }
 
-        // Otherwise fetch from vouchers inventory using stored payment amount
-        const voucherAmount = pendingPaymentAmount || currentPaymentAmount || amount; // Use stored payment amount or fallback to state
-        console.log("🎫 Voucher fetch debugging:", {
-          pendingPaymentAmount,
-          currentPaymentAmount,
-          globalAmount: amount,
-          voucherAmount,
-          paymentReference
-        });
-
-        const voucherRes = await fetch("/api/get-voucher", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: voucherAmount, phone }),
-        });
-
-        const voucherData = await voucherRes.json();
-
-        if (voucherData.success) {
-          setVoucherOnce(voucherData.voucher);
-          setMessage("Payment completed! Your voucher is ready.");
-          setPaymentReference(null); // clear after completion
-
-          // ✅ Save successful transaction to Firestore 1000ugx
-          try {
-
-              await saveTransactionOnce({
-                reference,
-                phone,
-                amount: voucherAmount,
-                voucher: voucherData.voucher,
-                status: "successful",
-              });
-
-              console.log("✅ Transaction saved to Firestore");
-
-          } catch (fireErr) {
-            console.error("❌ Failed to save transaction:", fireErr);
-          }
-
-          return true; // Payment completed
-        } else {
-          console.error(`❌ Voucher assignment failed: ${voucherData.message || 'Unknown error'}`);
-          setError(`Payment completed for ${voucherAmount} UGX, but no voucher available for this amount. Please contact support with reference: ${reference}`);
-          return true;
-        }
+        // If no voucher returned, this means check-payment API couldn't assign one
+        // This should not happen with our consolidated approach, but handle gracefully
+        console.error(`❌ Payment successful but no voucher assigned by check-payment API`);
+        setError(`Payment completed for ${voucherAmount} UGX, but voucher assignment failed. Please contact support with reference: ${reference}`);
+        return true;
 
       } else if (status === "failed") {
         console.log("❌ Payment failed.");
@@ -492,10 +442,38 @@ const startPaymentPolling = (reference) => {
     }
   };
 
+  // Function to notify admin when vouchers are unavailable
+  const notifyAdminOutOfVouchers = async () => {
+    try {
+      const adminMessage = "Urgent: System out of Vouchers";
+      const adminNumber = "+256782830524"; // Admin phone number
+
+      console.log("📱 Notifying admin about voucher shortage");
+
+      const response = await fetch("/api/send-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          number: adminNumber,
+          message: adminMessage
+        }),
+      });
+
+      const result = await response.json();
+      if (response.ok && result.success) {
+        console.log("✅ Admin notified about voucher shortage");
+      } else {
+        console.error("❌ Failed to notify admin:", result);
+      }
+    } catch (err) {
+      console.error("❌ Error notifying admin:", err);
+    }
+  };
+
   const handlePayment = async (paymentAmount = null) => {
     setError("");
     setMessage("");
-    
+
     // Clear any existing polling before starting new payment
     if (pollingInterval) {
       clearInterval(pollingInterval);
@@ -527,16 +505,49 @@ const startPaymentPolling = (reference) => {
 
     // Store the payment amount for voucher fetching
     setCurrentPaymentAmount(amountToUse);
-    setPendingPaymentAmount(amountToUse); // Store for transaction logging
-    console.log("💰 Payment initiated with amount:", amountToUse);
 
+    // ✅ STEP 1: Check voucher availability BEFORE charging user
     setLoading(true);
+    try {
+      console.log("🔍 Checking voucher availability before payment...");
 
+      const availabilityRes = await fetch("/api/check-voucher-availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: amountToUse }),
+      });
+
+      const availabilityData = await availabilityRes.json();
+
+      if (!availabilityData.success || !availabilityData.available) {
+        console.error("❌ No vouchers available for amount:", amountToUse);
+        setError("System Error please call Admin");
+
+        // Notify admin about voucher shortage
+        await notifyAdminOutOfVouchers();
+
+        setLoading(false);
+        return;
+      }
+
+      console.log(`✅ Vouchers available: ${availabilityData.count} for ${amountToUse} UGX`);
+
+    } catch (availabilityErr) {
+      console.error("❌ Error checking voucher availability:", availabilityErr);
+      setError("System Error please call Admin");
+
+      // Notify admin about system error
+      await notifyAdminOutOfVouchers();
+
+      setLoading(false);
+      return;
+    }
+
+    // ✅ STEP 2: Proceed with payment only if vouchers are available
     try {
       const formattedPhone = formatPhoneNumber(phone);
       console.log("💳 Initiating payment with:", { phone: formattedPhone, amount: amountToUse, amountType: typeof amountToUse });
 
-      
       const res = await fetch("/api/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -625,13 +636,13 @@ const startPaymentPolling = (reference) => {
           }
         }
       `}</style>
-      <div style={{ 
-        display: "flex", 
-        flexDirection: "column", 
-        alignItems: "center", 
+      <div style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
         justifyContent: "center",
-        minHeight: "100vh",
-        padding: "1rem",
+        minHeight: "100%",
+        padding: "0.25rem",
         backgroundColor: "#f5f5f5"
       }}>
         {/* Main Card */}
@@ -641,7 +652,7 @@ const startPaymentPolling = (reference) => {
           backgroundColor: "white",
           borderRadius: "12px",
           boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-          padding: "2rem",
+          padding: "1rem",
           display: "flex",
           flexDirection: "column",
           alignItems: "center"
@@ -652,17 +663,17 @@ const startPaymentPolling = (reference) => {
             flexDirection: "column", 
             alignItems: "center", 
             width: "100%", 
-            marginBottom: "2rem", 
+            marginBottom: "1rem", 
             textAlign: "center" 
           }}>
             <h1 style={{
               margin: 0,
               fontSize: "1.5rem",
-              lineHeight: 1.3,
+              lineHeight: 1,
               fontWeight: "bold",
               color: "#333"
             }}>
-              YOU BUY WIFI VOUCHER USING MOBILE MONEY
+              BUY WIFI CODE
             </h1>
           </div>
 
@@ -670,7 +681,7 @@ const startPaymentPolling = (reference) => {
           {!paymentReference && !voucher && (
             <div style={{ width: "100%" }}>
               {/* Phone Number Input */}
-              <div style={{ marginBottom: "1.5rem" }}>
+              <div style={{ marginBottom: "1rem" }}>
                 <label style={{ 
                   display: "block", 
                   marginBottom: "0.5rem", 
@@ -725,7 +736,7 @@ const startPaymentPolling = (reference) => {
               <div style={{ 
                 display: "flex", 
                 flexDirection: "column", 
-                gap: "0.75rem" 
+                gap: "0.50rem" 
               }}>
                 {/* 4hrs - 500 */}
                 <div style={{
@@ -738,8 +749,7 @@ const startPaymentPolling = (reference) => {
                   width: "100%"
                 }}>
                   <div style={{ color: "white", textAlign: "left" }}>
-                    <div style={{ fontSize: "0.875rem", fontWeight: "500" }}>4HRS</div>
-                    <div style={{ fontSize: "1rem", fontWeight: "600", marginTop: "0.25rem" }}>UGX 500</div>
+                    <div style={{ fontSize: "1rem", fontWeight: "600" }}>4HRS - UGX 500</div>
                   </div>
                   <button
                     onClick={() => {
@@ -783,8 +793,7 @@ const startPaymentPolling = (reference) => {
                   width: "100%"
                 }}>
                   <div style={{ color: "white", textAlign: "left" }}>
-                    <div style={{ fontSize: "0.875rem", fontWeight: "500" }}>24HRS</div>
-                    <div style={{ fontSize: "1rem", fontWeight: "600", marginTop: "0.25rem" }}>UGX 1,000</div>
+                    <div style={{ fontSize: "1rem", fontWeight: "600" }}>24HRS - UGX 1,000</div>
                   </div>
                   <button
                     onClick={() => {
@@ -817,7 +826,8 @@ const startPaymentPolling = (reference) => {
                   </button>
                 </div>
 
-                {/* 3days - 2500 */}
+                {/* 3days - 2500 - COMMENTED OUT TEMPORARILY */}
+                {/*
                 <div style={{
                   display: "flex",
                   alignItems: "center",
@@ -861,6 +871,7 @@ const startPaymentPolling = (reference) => {
                     BUY
                   </button>
                 </div>
+                */}
 
               </div>
             </div>
@@ -872,7 +883,7 @@ const startPaymentPolling = (reference) => {
               width: "100%"
             }}>
               <p style={{ 
-                margin: "0 0 0.75rem 0", 
+                margin: "0 0 0.1rem 0", 
                 fontSize: "0.875rem", 
                 color: "#999",
                 fontWeight: "400"
@@ -883,11 +894,11 @@ const startPaymentPolling = (reference) => {
                 display: "flex", 
                 justifyContent: "center", 
                 alignItems: "center",
-                gap: "1.5rem"
+                gap: "1rem"
               }}>
                 <Image 
                   src="/mtn.png" 
-                  alt="MTN Mobile Moneyy" 
+                  alt="MTN Mobile Money" 
                   width={50} 
                   height={50} 
                   style={{ width: "50px", height: "50px", objectFit: "cover", borderRadius: "4px" }} 
@@ -904,7 +915,7 @@ const startPaymentPolling = (reference) => {
 
             {/* Help Contact */}
             <div style={{ 
-              marginTop: "1.5rem", 
+              marginTop: "1rem", 
               textAlign: "center",
               width: "100%"
             }}>
@@ -978,6 +989,15 @@ const startPaymentPolling = (reference) => {
                   backgroundClip: "text"
                 }}>
                   <span>Processing Payment</span>
+                  <p style={{
+                    margin: "0.5rem 0 0 0",
+                    fontSize: "0.875rem",
+                    color: "#666",
+                    textAlign: "center",
+                    fontWeight: "400"
+                  }}>
+                    (confirm purchase on your mobile phone and enter pin, (MARZ INNOVATION LIMITED) for help call the number below
+                  </p>
                   <div style={{
                     display: "flex",
                     gap: "3px"
@@ -1018,7 +1038,8 @@ const startPaymentPolling = (reference) => {
                 Please wait while we confirm your payment...
               </p>
               
-              {/* Status Message */}
+              {/* Status Message - COMMENTED OUT */}
+              {/*
               {statusMessage && (
                 <div style={{
                   marginTop: "1.5rem",
@@ -1035,6 +1056,7 @@ const startPaymentPolling = (reference) => {
                   {statusMessage}
                 </div>
               )}
+              */}
             </div>
           )}
           
