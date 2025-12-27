@@ -652,7 +652,7 @@ const startPaymentPolling = (reference) => {
           backgroundColor: "white",
           borderRadius: "12px",
           boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-          padding: "2rem",
+          padding: "1rem",
           display: "flex",
           flexDirection: "column",
           alignItems: "center"
@@ -663,17 +663,17 @@ const startPaymentPolling = (reference) => {
             flexDirection: "column", 
             alignItems: "center", 
             width: "100%", 
-            marginBottom: "2rem", 
+            marginBottom: "1rem", 
             textAlign: "center" 
           }}>
             <h1 style={{
               margin: 0,
               fontSize: "1.5rem",
-              lineHeight: 1.3,
+              lineHeight: 1,
               fontWeight: "bold",
               color: "#333"
             }}>
-              BUY WIFI VOUCHER USING MOBILE MONEY
+              BUY WIFI CODE - MOBILE MONEY
             </h1>
           </div>
 
@@ -681,7 +681,7 @@ const startPaymentPolling = (reference) => {
           {!paymentReference && !voucher && (
             <div style={{ width: "100%" }}>
               {/* Phone Number Input */}
-              <div style={{ marginBottom: "1.5rem" }}>
+              <div style={{ marginBottom: "1rem" }}>
                 <label style={{ 
                   display: "block", 
                   marginBottom: "0.5rem", 
@@ -883,7 +883,7 @@ const startPaymentPolling = (reference) => {
               width: "100%"
             }}>
               <p style={{ 
-                margin: "0 0 0.75rem 0", 
+                margin: "0 0 0.1rem 0", 
                 fontSize: "0.875rem", 
                 color: "#999",
                 fontWeight: "400"
@@ -894,7 +894,7 @@ const startPaymentPolling = (reference) => {
                 display: "flex", 
                 justifyContent: "center", 
                 alignItems: "center",
-                gap: "1.5rem"
+                gap: "1rem"
               }}>
                 <Image 
                   src="/mtn.png" 
@@ -915,7 +915,7 @@ const startPaymentPolling = (reference) => {
 
             {/* Help Contact */}
             <div style={{ 
-              marginTop: "1.5rem", 
+              marginTop: "1rem", 
               textAlign: "center",
               width: "100%"
             }}>
