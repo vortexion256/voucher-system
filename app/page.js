@@ -636,13 +636,13 @@ const startPaymentPolling = (reference) => {
           }
         }
       `}</style>
-      <div style={{ 
-        display: "flex", 
-        flexDirection: "column", 
-        alignItems: "center", 
+      <div style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
         justifyContent: "center",
-        minHeight: "100vh",
-        padding: "1rem",
+        minHeight: "100%",
+        padding: "0.25rem",
         backgroundColor: "#f5f5f5"
       }}>
         {/* Main Card */}
@@ -673,7 +673,7 @@ const startPaymentPolling = (reference) => {
               fontWeight: "bold",
               color: "#333"
             }}>
-              BUY WIFI CODE - MOBILE MONEY
+              BUY WIFI CODE
             </h1>
           </div>
 
@@ -736,7 +736,7 @@ const startPaymentPolling = (reference) => {
               <div style={{ 
                 display: "flex", 
                 flexDirection: "column", 
-                gap: "0.75rem" 
+                gap: "0.50rem" 
               }}>
                 {/* 4hrs - 500 */}
                 <div style={{
