@@ -30,7 +30,7 @@ function LoginInner() {
       );
       const snap = await getDocs(q);
       if (snap.empty) {
-        throw new Error("Your email is not approved for admin access");
+        throw new Error("Your email is not approved for Admin Access");
       }
 
       const cb = search.get("callbackUrl") || "/admin/vouchers";
