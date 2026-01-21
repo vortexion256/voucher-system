@@ -39,53 +39,8 @@ export default function Home() {
     return ugandaPhoneRegex.test(cleanPhone);
   };
 
-  // Auto-send SMS with voucher code once available (only once per purchase)
-  useEffect(() => {
-    if (!voucher || !phone) {
-      console.log("📱 SMS: Missing voucher or phone", { voucher: !!voucher, phone });
-      return;
-    }
-    if (smsLockRef.current) {
-      console.log("📱 SMS: Already sent (locked)");
-      return; // prevent duplicate sends due to re-renders/StrictMode
-    }
-    smsLockRef.current = true;
-    console.log("📱 SMS: Starting SMS send process");
-
-    (async () => {
-      try {
-        const formattedNumber = formatPhoneNumber(phone);
-        // Add + prefix for EGOSMS API
-        const number = formattedNumber.startsWith('256') ? `+${formattedNumber}` : formattedNumber;
-        const message = `Your wifi code ${voucher}`;
-
-        console.log("📱 SMS: Sending to", { number, messageLength: message.length });
-
-        console.time("📱 SMS API Call");
-        const response = await fetch("/api/send-sms", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ number, message }),
-        });
-
-        const result = await response.json();
-        console.timeEnd("📱 SMS API Call");
-        console.log("📱 SMS: API Response", result);
-
-        if (!response.ok || !result.success) {
-          console.error("❌ SMS: Failed to send", result);
-          setError("Failed to send SMS with voucher code. Please contact support.");
-        } else {
-          console.log("✅ SMS: Sent successfully");
-        }
-      } catch (err) {
-        console.error("❌ SMS: Error sending SMS", err);
-        setError("Failed to send SMS with voucher code. Please contact support.");
-      } finally {
-        setSmsSent(true);
-      }
-    })();
-  }, [voucher, phone]);
+  // SMS is sent 100% server-side (process-payment-jobs or check-payment completion).
+  // No client-side SMS so payment completes and SMS is delivered even if user refreshes.
 
   // Helper to set voucher only once and stop any ongoing polling
   const setVoucherOnce = (code) => {
@@ -470,6 +425,90 @@ const startPaymentPolling = (reference) => {
     }
   };
 
+  // Recover payment status by phone (after refresh or new device). All processing and SMS stay server-side.
+  const checkPaymentByPhone = async () => {
+    if (!phone.trim()) {
+      setError("Enter your phone number to check status");
+      return;
+    }
+    if (!validatePhoneNumber(phone)) {
+      setError("Please enter a valid Ugandan phone number");
+      return;
+    }
+    setError("");
+    setMessage("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/check-payment-by-phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: formatPhoneNumber(phone) }),
+      });
+      const data = await res.json();
+      const d = data?.data;
+      if (!data.success || !d) {
+        setError(data.message || "Could not check status");
+        return;
+      }
+      if (d.status === "not_found") {
+        setError(d.message || "No payment found for this number");
+        return;
+      }
+      if (d.status === "successful" && d.voucher) {
+        setVoucherOnce(d.voucher);
+        setCurrentPaymentAmount(d.amount);
+        setMessage("Payment found.");
+        return;
+      }
+      if (d.status === "failed") {
+        setError("This payment failed. Please try again.");
+        return;
+      }
+      // processing or similar: resume polling by reference
+      if (d.reference) {
+        setCurrentPaymentAmount(d.amount);
+        setPaymentReference(d.reference);
+        startPaymentPolling(d.reference);
+      }
+    } catch (err) {
+      setError("Failed to check status. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Resend last paid voucher by SMS (in case they forgot it)
+  const resendVoucherSms = async () => {
+    if (!phone.trim()) {
+      setError("Enter your phone number to resend voucher");
+      return;
+    }
+    if (!validatePhoneNumber(phone)) {
+      setError("Please enter a valid Ugandan phone number");
+      return;
+    }
+    setError("");
+    setMessage("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/resend-voucher-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: formatPhoneNumber(phone) }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage(data.message || "Voucher sent to your phone.");
+      } else {
+        setError(data.message || "Could not resend. Make a payment first.");
+      }
+    } catch (err) {
+      setError("Failed to resend. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Function to notify admin when vouchers are unavailable
   const notifyAdminOutOfVouchers = async () => {
     try {
@@ -612,11 +651,9 @@ const startPaymentPolling = (reference) => {
           // No message shown for processing - just start polling silently
           // Store reference for polling if payment is still processing
           if (data.data.reference) {
-             const { reference, transactionUuid } = data.data; // <-- add this line
-            setPaymentReference(data.data.reference);
-            // Start polling for payment status
-            
-            startPaymentPolling(reference, transactionUuid); // <-- updated to include transactionUuid
+            const { reference } = data.data;
+            setPaymentReference(reference);
+            startPaymentPolling(reference);
           }
         }
         
@@ -744,6 +781,40 @@ const startPaymentPolling = (reference) => {
                     boxSizing: "border-box"
                   }}
                 />
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
+                  <button
+                    type="button"
+                    onClick={checkPaymentByPhone}
+                    disabled={loading}
+                    style={{
+                      padding: "0.375rem 0.75rem",
+                      fontSize: "0.8125rem",
+                      color: "#7652AF",
+                      background: "none",
+                      border: "1px solid #7652AF",
+                      borderRadius: "6px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Check status of a recent payment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resendVoucherSms}
+                    disabled={loading}
+                    style={{
+                      padding: "0.375rem 0.75rem",
+                      fontSize: "0.8125rem",
+                      color: "#28a745",
+                      background: "none",
+                      border: "1px solid #28a745",
+                      borderRadius: "6px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Resend my last voucher by SMS
+                  </button>
+                </div>
                 {error && (
                   <p style={{ 
                     color: "#ff4444", 
@@ -1166,6 +1237,23 @@ const startPaymentPolling = (reference) => {
               }}>
                 Save this code! You can use it to Login to ENOX SUPER FAST WiFi HOTSPOT
               </p>
+              <button
+                type="button"
+                onClick={resendVoucherSms}
+                disabled={loading}
+                style={{
+                  marginTop: "1rem",
+                  padding: "0.5rem 1rem",
+                  fontSize: "0.875rem",
+                  color: "#28a745",
+                  background: "none",
+                  border: "1px solid #28a745",
+                  borderRadius: "8px",
+                  cursor: loading ? "not-allowed" : "pointer",
+                }}
+              >
+                Resend code by SMS
+              </button>
             </div>
           )}
         </div>

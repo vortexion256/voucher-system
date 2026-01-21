@@ -493,7 +493,8 @@ export const runtime = "nodejs";
 
 import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
-import { storePendingPayment, getVoucher } from "../../lib/storage.js";
+import { storePendingPayment } from "../../lib/storage.js";
+import { addPaymentJob } from "../../lib/jobQueue.js";
 
 export async function POST(request) {
   try {
@@ -617,7 +618,10 @@ export async function POST(request) {
 
     // ✅ Store pending payment for webhook follow-up
     const transactionId = response.data.data?.transaction?.uuid;
-    storePendingPayment(reference, formattedPhone, numericAmount, transactionId);
+    await storePendingPayment(reference, formattedPhone, numericAmount, transactionId);
+
+    // ✅ Enqueue server-side job: MarzPay polling, voucher assignment, SMS (survives page refresh)
+    await addPaymentJob(reference, formattedPhone, numericAmount, transactionId);
 
     const status = response.data.data?.transaction?.status;
     const actualAmount = response.data.data?.transaction?.amount;

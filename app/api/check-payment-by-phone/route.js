@@ -1,53 +1,58 @@
-import { getPayment, getVoucher, updatePaymentStatus } from "../../lib/storage.js";
+import { getPaymentByPhone, getVoucher } from "../../lib/storage.js";
 import { db } from "../../lib/firebase.js";
 import { collection, query, where, limit, getDocs, updateDoc, doc } from "firebase/firestore";
+import axios from "axios";
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request) {
   try {
-    const { reference } = await request.json();
+    const { phone } = await request.json();
     
-    if (!reference) {
+    if (!phone) {
       return Response.json(
-        { success: false, message: "Reference required" },
+        { success: false, message: "Phone number required" },
         { status: 400 }
       );
     }
 
-    console.log(`🔍 Checking payment status for reference: ${reference}`);
+    console.log(`🔍 Checking payment status for phone: ${phone}`);
     
-    // Check if payment is completed and has voucher
-    const voucher = await getVoucher(reference);
-    if (voucher) {
-      console.log(`✅ Payment completed with voucher: ${voucher.voucher}`);
+    // Get payment by phone number (most recent)
+    const payment = await getPaymentByPhone(phone);
+    
+    if (!payment) {
+      console.log(`❌ No payment found for phone: ${phone}`);
+      return Response.json({
+        success: true,
+        data: {
+          status: "not_found",
+          message: "No payment found for this phone number"
+        }
+      });
+    }
+
+    console.log(`📊 Found payment: ${payment.reference}, status: ${payment.status}`);
+
+    // If payment is completed and has voucher, return it
+    if (payment.status === "successful" && payment.voucher) {
+      console.log(`✅ Payment completed with voucher: ${payment.voucher}`);
       return Response.json({
         success: true,
         data: {
           status: "successful",
-          voucher: voucher.voucher,
-          amount: voucher.amount,
-          phone: voucher.phone,
-          completedAt: voucher.updatedAt
+          voucher: payment.voucher,
+          amount: payment.amount,
+          phone: payment.phone,
+          reference: payment.reference,
+          completedAt: payment.updatedAt
         }
       });
     }
-    
-    // Check if payment exists in storage
-    const payment = await getPayment(reference);
-    if (!payment) {
-      console.log(`❌ Payment not found for reference: ${reference}`);
-      return Response.json(
-        { success: false, message: "Payment not found" },
-        { status: 404 }
-      );
-    }
-    
-    console.log(`📊 Current payment status: ${payment.status}`);
-    console.log(`🆔 Transaction UUID: ${payment.transactionId}`);
-    
-    // If we have a transaction UUID, check with MarzPay API
-    if (payment.transactionId && payment.status === 'processing') {
+
+    // If payment is still processing, check with MarzPay API
+    if (payment.status === "processing" && payment.transactionId) {
       console.log(`🌐 Checking MarzPay API for transaction: ${payment.transactionId}`);
       
       try {
@@ -55,12 +60,13 @@ export async function POST(request) {
         const proto = request.headers.get('x-forwarded-proto') || 'https';
         const host = request.headers.get('host');
         const baseUrl = `${proto}://${host}`;
+        
         // Call our MarzPay API checker
         const marzCheckResponse = await fetch(`${baseUrl}/api/check-marz-payment`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            reference: reference, 
+            reference: payment.reference, 
             transactionUuid: payment.transactionId 
           })
         });
@@ -75,9 +81,9 @@ export async function POST(request) {
             // Update our storage with the new status
             if (marzData.data.internalStatus === 'successful' && marzData.data.shouldGenerateVoucher) {
               // Check if voucher already assigned to prevent duplicates
-              const existingVoucher = await getVoucher(reference);
+              const existingVoucher = await getVoucher(payment.reference);
               if (existingVoucher) {
-                console.log(`🎫 Voucher already assigned for reference ${reference}, skipping duplicate assignment`);
+                console.log(`🎫 Voucher already assigned for reference ${payment.reference}, skipping duplicate assignment`);
                 return Response.json({
                   success: true,
                   data: {
@@ -85,6 +91,7 @@ export async function POST(request) {
                     voucher: existingVoucher.voucher,
                     amount: payment.amount,
                     phone: payment.phone,
+                    reference: payment.reference,
                     completedAt: existingVoucher.updatedAt
                   }
                 });
@@ -106,69 +113,80 @@ export async function POST(request) {
 
                 // Validate voucher amount matches payment amount
                 if (Number(voucherData.amount) !== Number(payment.amount)) {
-                  console.error(`🚨 CRITICAL: Check-payment voucher amount mismatch! Payment: ${payment.amount}, Voucher: ${voucherData.amount}`);
-                  console.warn(`⚠️ Skipping voucher assignment due to amount mismatch`);
-                  // Update status successful without voucher
-                  await updatePaymentStatus(reference, "successful");
-                } else {
-                  await updateDoc(doc(db, "vouchers", voucherDoc.id), {
-                    used: true,
-                    assignedTo: payment.phone,
-                    assignedAt: new Date(),
-                  });
-
-                  // Update payment status with voucher code
-                  await updatePaymentStatus(reference, "successful", voucherData.code);
-
-                  // Send voucher by SMS immediately (no need to wait for "check status")
-                  try {
-                    const proto = request.headers.get("x-forwarded-proto") || "https";
-                    const host = request.headers.get("host");
-                    const baseUrl = `${proto}://${host}`;
-                    const msg = `Your wifi code ${voucherData.code}. Ref: ${reference}.`;
-                    const smsRes = await fetch(`${baseUrl}/api/send-sms`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ number: payment.phone, message: msg }),
-                    });
-                    const smsJson = await smsRes.json();
-                    if (smsRes.ok && smsJson.success) console.log(`📱 SMS sent to ${payment.phone}`);
-                    else console.error("📱 SMS failed:", smsJson);
-                  } catch (e) {
-                    console.error("📱 SMS send error:", e);
-                  }
-
-                  console.log(`🎫 Check-payment issued voucher: ${voucherData.code} (${voucherData.amount} UGX) for payment: ${payment.amount} UGX`);
-
+                  console.error(`🚨 CRITICAL: Voucher amount mismatch! Payment: ${payment.amount}, Voucher: ${voucherData.amount}`);
                   return Response.json({
                     success: true,
                     data: {
                       status: "successful",
-                      voucher: voucherData.code,
+                      voucher: null,
                       amount: payment.amount,
                       phone: payment.phone,
-                      completedAt: new Date().toISOString(),
-                    },
+                      reference: payment.reference,
+                      message: "Payment completed but voucher assignment failed"
+                    }
                   });
                 }
-              } else {
-                console.warn(`⚠️ No available vouchers in Firestore for amount: ${payment.amount} UGX`);
-                // Update status successful without voucher
-                await updatePaymentStatus(reference, "successful");
+
+                await updateDoc(doc(db, "vouchers", voucherDoc.id), {
+                  used: true,
+                  assignedTo: payment.phone,
+                  assignedAt: new Date(),
+                  paymentReference: payment.reference,
+                });
+
+                // Update payment status with voucher code
+                const { updatePaymentStatus } = await import("../../lib/storage.js");
+                await updatePaymentStatus(payment.reference, "successful", voucherData.code);
+
+                // Send voucher by SMS immediately (no need to wait for user to "check status")
+                try {
+                  const proto = request.headers.get("x-forwarded-proto") || "https";
+                  const host = request.headers.get("host");
+                  const baseUrl = `${proto}://${host}`;
+                  const msg = `Your wifi code ${voucherData.code}. Ref: ${payment.reference}.`;
+                  const smsRes = await fetch(`${baseUrl}/api/send-sms`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ number: payment.phone, message: msg }),
+                  });
+                  const smsJson = await smsRes.json();
+                  if (smsRes.ok && smsJson.success) console.log(`📱 SMS sent to ${payment.phone}`);
+                  else console.error("📱 SMS failed:", smsJson);
+                } catch (e) {
+                  console.error("📱 SMS send error:", e);
+                }
+
+                console.log(`🎫 Issued voucher: ${voucherData.code} (${voucherData.amount} UGX) for payment: ${payment.amount} UGX`);
+
                 return Response.json({
                   success: true,
                   data: {
                     status: "successful",
-                    voucher: null, // Explicitly indicate no voucher assigned
+                    voucher: voucherData.code,
                     amount: payment.amount,
                     phone: payment.phone,
+                    reference: payment.reference,
                     completedAt: new Date().toISOString(),
+                  },
+                });
+              } else {
+                console.warn(`⚠️ No available vouchers in Firestore for amount: ${payment.amount} UGX`);
+                return Response.json({
+                  success: true,
+                  data: {
+                    status: "successful",
+                    voucher: null,
+                    amount: payment.amount,
+                    phone: payment.phone,
+                    reference: payment.reference,
+                    message: "Payment completed but no vouchers available"
                   },
                 });
               }
             } else if (marzData.data.internalStatus === 'failed') {
               // Update payment status to failed
-              await updatePaymentStatus(reference, "failed");
+              const { updatePaymentStatus } = await import("../../lib/storage.js");
+              await updatePaymentStatus(payment.reference, "failed");
               
               return Response.json({
                 success: true,
@@ -176,6 +194,7 @@ export async function POST(request) {
                   status: "failed",
                   amount: payment.amount,
                   phone: payment.phone,
+                  reference: payment.reference,
                   createdAt: payment.createdAt,
                   voucher: null
                 }
@@ -193,22 +212,23 @@ export async function POST(request) {
       }
     }
     
-    // Return current local status
-    console.log(`📊 Returning local payment status: ${payment.status}`);
+    // Return current status
+    console.log(`📊 Returning payment status: ${payment.status}`);
     return Response.json({
       success: true,
       data: {
         status: payment.status,
         amount: payment.amount,
         phone: payment.phone,
+        reference: payment.reference,
         createdAt: payment.createdAt,
         updatedAt: payment.updatedAt,
-        voucher: null
+        voucher: payment.voucher || null
       }
     });
     
   } catch (error) {
-    console.error("Check payment error:", error);
+    console.error("Check payment by phone error:", error);
     return Response.json(
       { success: false, message: "Failed to check payment status" },
       { status: 500 }
@@ -217,7 +237,5 @@ export async function POST(request) {
 }
 
 export async function GET() {
-  return Response.json({ success: true, message: "check-payment alive" });
+  return Response.json({ success: true, message: "check-payment-by-phone alive" });
 }
-
-// Voucher generation removed; issuing from Firestore inventory instead.

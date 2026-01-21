@@ -29,9 +29,11 @@ export default function VouchersAdminPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [authorized, setAuthorized] = useState(false);
-  const [activeTab, setActiveTab] = useState("vouchers"); // 'vouchers' | 'bulk' | 'transactions'
+  const [activeTab, setActiveTab] = useState("vouchers"); // 'vouchers' | 'bulk' | 'transactions' | 'payments'
   const [transactions, setTransactions] = useState([]);
   const [txStatusFilter, setTxStatusFilter] = useState("all"); // all|successful|failed|pending
+  const [payments, setPayments] = useState([]);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState("all"); // all|processing|failed|completed
 
   const baseQuery = useMemo(() => {
     const col = collection(db, "vouchers");
@@ -75,6 +77,52 @@ export default function VouchersAdminPage() {
       refreshTransactions();
     }
   }, [authorized, activeTab, txStatusFilter]);
+
+  async function refreshPayments() {
+    try {
+      const [pendSnap, compSnap] = await Promise.all([
+        getDocs(collection(db, "pendingPayments")),
+        getDocs(collection(db, "completedVouchers")),
+      ]);
+      const list = [];
+      pendSnap.docs.forEach(d => {
+        const x = d.data();
+        list.push({
+          id: d.id,
+          reference: d.id,
+          phone: x.phone,
+          amount: x.amount,
+          status: x.status || "processing",
+          voucher: x.voucher || null,
+          date: x.createdAt?.toDate?.() || x.createdAt || new Date(0),
+          source: "pending",
+        });
+      });
+      compSnap.docs.forEach(d => {
+        const x = d.data();
+        list.push({
+          id: d.id,
+          reference: d.id,
+          phone: x.phone,
+          amount: x.amount,
+          status: "completed",
+          voucher: x.voucher || null,
+          date: x.updatedAt?.toDate?.() || x.updatedAt || new Date(0),
+          source: "completed",
+        });
+      });
+      list.sort((a, b) => (b.date || 0) - (a.date || 0));
+      setPayments(list.slice(0, 100));
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  useEffect(() => {
+    if (authorized && activeTab === "payments") {
+      refreshPayments();
+    }
+  }, [authorized, activeTab]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -196,6 +244,9 @@ export default function VouchersAdminPage() {
         <button className={`tab ${activeTab === "bulk" ? "active" : ""}`} onClick={() => setActiveTab("bulk")}>Bulk Add</button>
         <button className={`tab ${activeTab === "transactions" ? "active" : ""}`} onClick={() => setActiveTab("transactions")}>
           Transactions
+        </button>
+        <button className={`tab ${activeTab === "payments" ? "active" : ""}`} onClick={() => setActiveTab("payments")}>
+          Payments
         </button>
       </div>
 
@@ -338,6 +389,51 @@ export default function VouchersAdminPage() {
         </div>
       )}
 
+      {activeTab === "payments" && (
+        <div className="card">
+          <div className="toolbar">
+            <h2>Payments</h2>
+            <div className="toolbar-right">
+              <select value={paymentStatusFilter} onChange={e => setPaymentStatusFilter(e.target.value)}>
+                <option value="all">All</option>
+                <option value="processing">Processing</option>
+                <option value="failed">Failed</option>
+                <option value="completed">Completed</option>
+              </select>
+              <button onClick={refreshPayments} className="btn subtle">Refresh</button>
+            </div>
+          </div>
+          <p style={{ margin: "0 0 0.5rem 0", fontSize: "12px", color: "#6b7280" }}>
+            Processing = waiting for customer on phone. Completed = paid, voucher issued. From pendingPayments + completedVouchers.
+          </p>
+          <div className="table tx">
+            <div className="thead">
+              <div>Date</div>
+              <div>Phone</div>
+              <div>Amount</div>
+              <div>Status</div>
+              <div>Voucher</div>
+              <div>Reference</div>
+            </div>
+            {payments
+              .filter(p => paymentStatusFilter === "all" || p.status === paymentStatusFilter)
+              .map(t => (
+                <div key={t.id} className="trow">
+                  <div>{t.date ? (t.date instanceof Date ? t.date.toLocaleString() : new Date(t.date).toLocaleString()) : "—"}</div>
+                  <div>{t.phone || ""}</div>
+                  <div>{t.amount != null ? Number(t.amount).toLocaleString() : ""}</div>
+                  <div className={`badge ${t.status}`}>{t.status}</div>
+                  <div className="code" title={t.voucher || ""}>{t.voucher || "—"}</div>
+                  <div className="code" title={t.reference || ""}>{t.reference || ""}</div>
+                </div>
+              ))}
+            {payments.filter(p => paymentStatusFilter === "all" || p.status === paymentStatusFilter).length === 0 && (
+              <div className="empty">No payments match the filter</div>
+            )}
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         .wrap { max-width: 1000px; margin: 1rem auto; padding: 1rem; overflow-x:hidden; }
         .topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom: 0.75rem; }
@@ -373,8 +469,10 @@ export default function VouchersAdminPage() {
         .alert.error{ background:#fff1f0; border:1px solid #ffa39e; color:#a8071a; }
         .badge{ display:inline-block; padding:.15rem .45rem; border-radius:999px; font-size:12px; background:#f3f4f6; }
         .badge.successful{ background:#ecfdf5; color:#065f46; }
+        .badge.completed{ background:#ecfdf5; color:#065f46; }
         .badge.failed{ background:#fef2f2; color:#991b1b; }
         .badge.pending{ background:#fff7ed; color:#92400e; }
+        .badge.processing{ background:#fff7ed; color:#92400e; }
 
         /* Mobile */
         @media (max-width: 700px){
