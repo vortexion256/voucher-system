@@ -17,21 +17,38 @@ import {
  */
 export async function GET(request) {
   try {
-    // Get all vouchers
-    const vouchersRef = collection(db, "vouchers");
-    const vouchersSnapshot = await getDocs(vouchersRef);
+    // Get userId from query params
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
 
-    // Get all transactions
+    if (!userId) {
+      return Response.json(
+        {
+          success: false,
+          message: "userId parameter is required",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Get vouchers for this user
+    const vouchersRef = collection(db, "vouchers");
+    const vouchersQuery = query(vouchersRef, where("userId", "==", userId));
+    const vouchersSnapshot = await getDocs(vouchersQuery);
+
+    // Get transactions (filter by userId if field exists, otherwise get all and filter client-side)
     const transactionsRef = collection(db, "transactions");
     const transactionsSnapshot = await getDocs(transactionsRef);
 
-    // Get all pending payments (for failed payments)
+    // Get pending payments for this user
     const pendingPaymentsRef = collection(db, "pendingPayments");
-    const pendingPaymentsSnapshot = await getDocs(pendingPaymentsRef);
+    const pendingPaymentsQuery = query(pendingPaymentsRef, where("userId", "==", userId));
+    const pendingPaymentsSnapshot = await getDocs(pendingPaymentsQuery);
 
-    // Get all completed vouchers (for additional transaction data)
+    // Get completed vouchers for this user
     const completedVouchersRef = collection(db, "completedVouchers");
-    const completedVouchersSnapshot = await getDocs(completedVouchersRef);
+    const completedVouchersQuery = query(completedVouchersRef, where("userId", "==", userId));
+    const completedVouchersSnapshot = await getDocs(completedVouchersQuery);
 
     // Process vouchers by category
     const voucherStats = {
@@ -67,9 +84,11 @@ export async function GET(request) {
       let totalAmount = 0;
       let count = 0;
 
-      // Check transactions collection
+      // Check transactions collection (filter by userId if field exists)
       transactionsSnapshot.docs.forEach((doc) => {
         const data = doc.data();
+        // Only include transactions for this user (if userId field exists)
+        if (data.userId && data.userId !== userId) return;
         if (data.status === "successful" && data.voucher) {
           const createdAt = data.createdAt?.toDate
             ? data.createdAt.toDate()
@@ -115,9 +134,11 @@ export async function GET(request) {
       let totalAmount = 0;
       let count = 0;
 
-      // Check transactions collection
+      // Check transactions collection (filter by userId if field exists)
       transactionsSnapshot.docs.forEach((doc) => {
         const data = doc.data();
+        // Only include transactions for this user (if userId field exists)
+        if (data.userId && data.userId !== userId) return;
         if (data.status === "successful" && data.voucher) {
           const createdAt = data.createdAt?.toDate
             ? data.createdAt.toDate()
@@ -158,9 +179,11 @@ export async function GET(request) {
     let failedCount = 0;
     let failedAmount = 0;
 
-    // Check transactions with failed status
+    // Check transactions with failed status (filter by userId if field exists)
     transactionsSnapshot.docs.forEach((doc) => {
       const data = doc.data();
+      // Only include transactions for this user (if userId field exists)
+      if (data.userId && data.userId !== userId) return;
       if (data.status === "failed") {
         failedCount++;
         failedAmount += Number(data.amount) || 0;

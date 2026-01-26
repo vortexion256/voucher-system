@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { auth, db } from "../lib/firebase.js";
-import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, orderBy, limit } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 
@@ -21,7 +21,14 @@ export default function Dashboard() {
   const [vouchers, setVouchers] = useState([]);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(1000);
-  const [activeTab, setActiveTab] = useState("credentials"); // 'credentials' | 'vouchers' | 'embed' | 'analytics'
+  const [bulkCodes, setBulkCodes] = useState("");
+  const [filterAmount, setFilterAmount] = useState(0);
+  const [onlyUnused, setOnlyUnused] = useState(true);
+  const [activeTab, setActiveTab] = useState("credentials"); // 'credentials' | 'vouchers' | 'bulk' | 'transactions' | 'payments' | 'embed' | 'analytics'
+  const [transactions, setTransactions] = useState([]);
+  const [txStatusFilter, setTxStatusFilter] = useState("all");
+  const [payments, setPayments] = useState([]);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState("all");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -40,6 +47,14 @@ export default function Dashboard() {
             
             // Load vouchers for this user
             await loadVouchers(userId);
+            
+            // Load transactions and payments when those tabs are active
+            if (activeTab === "transactions") {
+              await loadTransactions(userId);
+            }
+            if (activeTab === "payments") {
+              await loadPayments(userId);
+            }
           } else {
             // User doesn't exist in users collection - redirect to complete profile
             setError("User account not found. Please complete your profile.");
@@ -61,12 +76,19 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [router]);
 
-  const loadVouchers = async (userId) => {
+  const loadVouchers = async (userId, filterAmt = filterAmount, unusedOnly = onlyUnused) => {
     try {
-      const q = query(
-        collection(db, "vouchers"),
-        where("userId", "==", userId)
-      );
+      const constraints = [where("userId", "==", userId)];
+      if (filterAmt && Number(filterAmt) > 0) {
+        constraints.push(where("amount", "==", Number(filterAmt)));
+      }
+      if (unusedOnly) {
+        constraints.push(where("used", "==", false));
+      }
+      constraints.push(orderBy("code", "asc"));
+      constraints.push(limit(100));
+      
+      const q = query(collection(db, "vouchers"), ...constraints);
       const snapshot = await getDocs(q);
       const vouchersList = snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -75,6 +97,65 @@ export default function Dashboard() {
       setVouchers(vouchersList);
     } catch (err) {
       console.error("Error loading vouchers:", err);
+    }
+  };
+
+  const loadTransactions = async (userId) => {
+    if (!userId) return;
+    try {
+      const constraints = [where("userId", "==", userId)];
+      if (txStatusFilter !== "all") {
+        constraints.push(where("status", "==", txStatusFilter));
+      }
+      constraints.push(orderBy("createdAt", "desc"));
+      constraints.push(limit(100));
+      
+      const q = query(collection(db, "transactions"), ...constraints);
+      const snapshot = await getDocs(q);
+      setTransactions(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error("Error loading transactions:", err);
+    }
+  };
+
+  const loadPayments = async (userId) => {
+    if (!userId) return;
+    try {
+      const [pendSnap, compSnap] = await Promise.all([
+        getDocs(query(collection(db, "pendingPayments"), where("userId", "==", userId))),
+        getDocs(query(collection(db, "completedVouchers"), where("userId", "==", userId))),
+      ]);
+      const list = [];
+      pendSnap.docs.forEach(d => {
+        const x = d.data();
+        list.push({
+          id: d.id,
+          reference: d.id,
+          phone: x.phone,
+          amount: x.amount,
+          status: x.status || "processing",
+          voucher: x.voucher || null,
+          date: x.createdAt?.toDate?.() || x.createdAt || new Date(0),
+          source: "pending",
+        });
+      });
+      compSnap.docs.forEach(d => {
+        const x = d.data();
+        list.push({
+          id: d.id,
+          reference: d.id,
+          phone: x.phone,
+          amount: x.amount,
+          status: "completed",
+          voucher: x.voucher || null,
+          date: x.updatedAt?.toDate?.() || x.updatedAt || new Date(0),
+          source: "completed",
+        });
+      });
+      list.sort((a, b) => (b.date || 0) - (a.date || 0));
+      setPayments(list.slice(0, 100));
+    } catch (err) {
+      console.error("Error loading payments:", err);
     }
   };
 
@@ -200,13 +281,68 @@ export default function Dashboard() {
       setMessage("Voucher added successfully!");
       setVoucherCode("");
       setVoucherAmount(1000);
-      await loadVouchers(userData.id);
+      await loadVouchers(userData.id, filterAmount, onlyUnused);
     } catch (err) {
       setError(err.message || "Failed to add voucher");
     } finally {
       setSaving(false);
     }
   };
+
+  const handleBulkAdd = async () => {
+    if (!userData || !bulkCodes || !voucherAmount) {
+      setError("Provide voucher codes and amount");
+      return;
+    }
+
+    const rows = bulkCodes
+      .split("\n")
+      .map(r => r.trim())
+      .filter(Boolean);
+    
+    if (rows.length === 0) {
+      setError("Provide at least one voucher code");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setMessage("");
+
+    let added = 0;
+    try {
+      for (const code of rows) {
+        await addDoc(collection(db, "vouchers"), {
+          userId: userData.id,
+          code: code,
+          amount: Number(voucherAmount),
+          used: false,
+          createdAt: serverTimestamp(),
+        });
+        added += 1;
+      }
+      setMessage(`Successfully added ${added} vouchers!`);
+      setBulkCodes("");
+      await loadVouchers(userData.id, filterAmount, onlyUnused);
+    } catch (err) {
+      setError(err.message || "Bulk add failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Load data when switching tabs
+  useEffect(() => {
+    if (userData?.id) {
+      if (activeTab === "vouchers") {
+        loadVouchers(userData.id, filterAmount, onlyUnused);
+      } else if (activeTab === "transactions") {
+        loadTransactions(userData.id);
+      } else if (activeTab === "payments") {
+        loadPayments(userData.id);
+      }
+    }
+  }, [activeTab, filterAmount, onlyUnused, txStatusFilter, userData?.id]);
 
   const copyEmbedUrl = () => {
     if (embedUrl) {
@@ -289,6 +425,45 @@ export default function Dashboard() {
           }}
         >
           Vouchers
+        </button>
+        <button
+          onClick={() => setActiveTab("bulk")}
+          style={{
+            padding: "10px 20px",
+            border: "none",
+            background: activeTab === "bulk" ? "#667eea" : "#f0f0f0",
+            color: activeTab === "bulk" ? "white" : "#333",
+            cursor: "pointer",
+            borderRadius: "4px"
+          }}
+        >
+          Bulk Add
+        </button>
+        <button
+          onClick={() => setActiveTab("transactions")}
+          style={{
+            padding: "10px 20px",
+            border: "none",
+            background: activeTab === "transactions" ? "#667eea" : "#f0f0f0",
+            color: activeTab === "transactions" ? "white" : "#333",
+            cursor: "pointer",
+            borderRadius: "4px"
+          }}
+        >
+          Transactions
+        </button>
+        <button
+          onClick={() => setActiveTab("payments")}
+          style={{
+            padding: "10px 20px",
+            border: "none",
+            background: activeTab === "payments" ? "#667eea" : "#f0f0f0",
+            color: activeTab === "payments" ? "white" : "#333",
+            cursor: "pointer",
+            borderRadius: "4px"
+          }}
+        >
+          Payments
         </button>
         <button
           onClick={() => setActiveTab("embed")}
@@ -436,7 +611,7 @@ export default function Dashboard() {
       {activeTab === "vouchers" && (
         <div style={{
           background: "white",
-          padding: "30px",
+          padding: "20px",
           borderRadius: "8px",
           boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
         }}>
@@ -448,33 +623,34 @@ export default function Dashboard() {
             borderRadius: "6px",
             marginBottom: "30px"
           }}>
-            <h3 style={{ marginBottom: "15px" }}>Add New Voucher</h3>
-            <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
+            <h3 style={{ marginBottom: "15px" }}>Add Single Voucher</h3>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "10px" }}>
               <input
                 type="text"
                 placeholder="Voucher Code"
                 value={voucherCode}
                 onChange={(e) => setVoucherCode(e.target.value)}
                 style={{
-                  flex: 1,
+                  flex: "1 1 200px",
                   padding: "10px",
                   border: "1px solid #ddd",
                   borderRadius: "6px"
                 }}
               />
-              <input
-                type="number"
-                placeholder="Amount"
+              <select
                 value={voucherAmount}
                 onChange={(e) => setVoucherAmount(Number(e.target.value))}
-                min="500"
                 style={{
-                  width: "120px",
                   padding: "10px",
                   border: "1px solid #ddd",
-                  borderRadius: "6px"
+                  borderRadius: "6px",
+                  minWidth: "150px"
                 }}
-              />
+              >
+                <option value={500}>UGX 500 (4hrs)</option>
+                <option value={1000}>UGX 1,000 (24hrs)</option>
+                <option value={2500}>UGX 2,500 (3days)</option>
+              </select>
               <button
                 onClick={handleAddVoucher}
                 disabled={saving}
@@ -493,9 +669,53 @@ export default function Dashboard() {
           </div>
 
           <div>
-            <h3 style={{ marginBottom: "15px" }}>Your Vouchers ({vouchers.length})</h3>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", flexWrap: "wrap", gap: "10px" }}>
+              <h3 style={{ margin: 0 }}>Voucher Inventory ({vouchers.length})</h3>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <select
+                  value={filterAmount}
+                  onChange={(e) => {
+                    setFilterAmount(Number(e.target.value));
+                    if (userData?.id) loadVouchers(userData.id, Number(e.target.value), onlyUnused);
+                  }}
+                  style={{
+                    padding: "8px",
+                    border: "1px solid #ddd",
+                    borderRadius: "6px"
+                  }}
+                >
+                  <option value={0}>All amounts</option>
+                  <option value={500}>UGX 500</option>
+                  <option value={1000}>UGX 1,000</option>
+                  <option value={2500}>UGX 2,500</option>
+                </select>
+                <label style={{ display: "flex", alignItems: "center", gap: "5px", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={onlyUnused}
+                    onChange={(e) => {
+                      setOnlyUnused(e.target.checked);
+                      if (userData?.id) loadVouchers(userData.id, filterAmount, e.target.checked);
+                    }}
+                  />
+                  Only unused
+                </label>
+                <button
+                  onClick={() => userData?.id && loadVouchers(userData.id, filterAmount, onlyUnused)}
+                  style={{
+                    padding: "8px 16px",
+                    background: "#f0f0f0",
+                    border: "1px solid #ddd",
+                    borderRadius: "6px",
+                    cursor: "pointer"
+                  }}
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "600px" }}>
                 <thead>
                   <tr style={{ background: "#f5f5f5" }}>
                     <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Code</th>
@@ -508,14 +728,14 @@ export default function Dashboard() {
                   {vouchers.length === 0 ? (
                     <tr>
                       <td colSpan="4" style={{ padding: "20px", textAlign: "center", color: "#666" }}>
-                        No vouchers yet. Add your first voucher above.
+                        No vouchers found. {filterAmount > 0 || onlyUnused ? "Try adjusting filters." : "Add your first voucher above."}
                       </td>
                     </tr>
                   ) : (
                     vouchers.map((v) => (
                       <tr key={v.id} style={{ borderBottom: "1px solid #eee" }}>
-                        <td style={{ padding: "12px" }}>{v.code}</td>
-                        <td style={{ padding: "12px" }}>{v.amount} UGX</td>
+                        <td style={{ padding: "12px", fontFamily: "monospace", fontSize: "14px" }}>{v.code}</td>
+                        <td style={{ padding: "12px" }}>{v.amount?.toLocaleString?.() ?? v.amount} UGX</td>
                         <td style={{ padding: "12px" }}>
                           <span style={{
                             padding: "4px 8px",
@@ -536,6 +756,266 @@ export default function Dashboard() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "bulk" && (
+        <div style={{
+          background: "white",
+          padding: "20px",
+          borderRadius: "8px",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+        }}>
+          <h2 style={{ marginBottom: "20px" }}>Bulk Add Vouchers</h2>
+          <div style={{
+            padding: "20px",
+            background: "#f5f5f5",
+            borderRadius: "6px"
+          }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 250px", gap: "20px", marginBottom: "15px" }}>
+              <div>
+                <label style={{ display: "block", marginBottom: "8px", fontWeight: "500" }}>
+                  Voucher Codes (one per line)
+                </label>
+                <textarea
+                  placeholder="Enter voucher codes, one per line&#10;CODE1&#10;CODE2&#10;CODE3"
+                  rows={15}
+                  value={bulkCodes}
+                  onChange={(e) => setBulkCodes(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    border: "1px solid #ddd",
+                    borderRadius: "6px",
+                    fontFamily: "monospace",
+                    fontSize: "14px",
+                    boxSizing: "border-box"
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: "8px", fontWeight: "500" }}>
+                  Amount
+                </label>
+                <select
+                  value={voucherAmount}
+                  onChange={(e) => setVoucherAmount(Number(e.target.value))}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    border: "1px solid #ddd",
+                    borderRadius: "6px",
+                    marginBottom: "15px"
+                  }}
+                >
+                  <option value={500}>UGX 500 (4hrs)</option>
+                  <option value={1000}>UGX 1,000 (24hrs)</option>
+                  <option value={2500}>UGX 2,500 (3days)</option>
+                </select>
+                <button
+                  onClick={handleBulkAdd}
+                  disabled={saving}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    background: saving ? "#ccc" : "#667eea",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: saving ? "not-allowed" : "pointer",
+                    fontWeight: "600"
+                  }}
+                >
+                  {saving ? "Adding..." : "Add All Vouchers"}
+                </button>
+              </div>
+            </div>
+            <p style={{ fontSize: "12px", color: "#666", margin: 0 }}>
+              Enter one voucher code per line. All vouchers will be added with the selected amount.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "transactions" && (
+        <div style={{
+          background: "white",
+          padding: "20px",
+          borderRadius: "8px",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
+            <h2 style={{ margin: 0 }}>Transactions</h2>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <select
+                value={txStatusFilter}
+                onChange={(e) => {
+                  setTxStatusFilter(e.target.value);
+                  if (userData?.id) loadTransactions(userData.id);
+                }}
+                style={{
+                  padding: "8px",
+                  border: "1px solid #ddd",
+                  borderRadius: "6px"
+                }}
+              >
+                <option value="all">All</option>
+                <option value="successful">Successful</option>
+                <option value="failed">Failed</option>
+                <option value="pending">Pending</option>
+              </select>
+              <button
+                onClick={() => userData?.id && loadTransactions(userData.id)}
+                style={{
+                  padding: "8px 16px",
+                  background: "#f0f0f0",
+                  border: "1px solid #ddd",
+                  borderRadius: "6px",
+                  cursor: "pointer"
+                }}
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "800px" }}>
+              <thead>
+                <tr style={{ background: "#f5f5f5" }}>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Date</th>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Phone</th>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Amount</th>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Status</th>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Voucher</th>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Reference</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ padding: "20px", textAlign: "center", color: "#666" }}>
+                      No transactions found.
+                    </td>
+                  </tr>
+                ) : (
+                  transactions.map((t) => (
+                    <tr key={t.id} style={{ borderBottom: "1px solid #eee" }}>
+                      <td style={{ padding: "12px", fontSize: "14px" }}>
+                        {t.createdAt?.toDate ? t.createdAt.toDate().toLocaleString() : t.createdAt || "-"}
+                      </td>
+                      <td style={{ padding: "12px" }}>{t.phone || "-"}</td>
+                      <td style={{ padding: "12px" }}>{t.amount?.toLocaleString?.() ?? t.amount} UGX</td>
+                      <td style={{ padding: "12px" }}>
+                        <span style={{
+                          padding: "4px 8px",
+                          borderRadius: "4px",
+                          fontSize: "12px",
+                          background: t.status === "successful" ? "#e8f5e9" : t.status === "failed" ? "#ffebee" : "#fff3cd",
+                          color: t.status === "successful" ? "#2e7d32" : t.status === "failed" ? "#c62828" : "#856404"
+                        }}>
+                          {t.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px", fontFamily: "monospace", fontSize: "12px" }}>{t.voucher || "-"}</td>
+                      <td style={{ padding: "12px", fontFamily: "monospace", fontSize: "12px" }}>{t.reference || "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "payments" && (
+        <div style={{
+          background: "white",
+          padding: "20px",
+          borderRadius: "8px",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
+            <h2 style={{ margin: 0 }}>Payments</h2>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <select
+                value={paymentStatusFilter}
+                onChange={(e) => setPaymentStatusFilter(e.target.value)}
+                style={{
+                  padding: "8px",
+                  border: "1px solid #ddd",
+                  borderRadius: "6px"
+                }}
+              >
+                <option value="all">All</option>
+                <option value="processing">Processing</option>
+                <option value="failed">Failed</option>
+                <option value="completed">Completed</option>
+              </select>
+              <button
+                onClick={() => userData?.id && loadPayments(userData.id)}
+                style={{
+                  padding: "8px 16px",
+                  background: "#f0f0f0",
+                  border: "1px solid #ddd",
+                  borderRadius: "6px",
+                  cursor: "pointer"
+                }}
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+          <p style={{ fontSize: "12px", color: "#666", margin: "0 0 15px 0" }}>
+            Processing = waiting for customer confirmation. Completed = paid, voucher issued.
+          </p>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "800px" }}>
+              <thead>
+                <tr style={{ background: "#f5f5f5" }}>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Date</th>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Phone</th>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Amount</th>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Status</th>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Voucher</th>
+                  <th style={{ padding: "12px", textAlign: "left", borderBottom: "2px solid #ddd" }}>Reference</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.filter(p => paymentStatusFilter === "all" || p.status === paymentStatusFilter).length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ padding: "20px", textAlign: "center", color: "#666" }}>
+                      No payments found.
+                    </td>
+                  </tr>
+                ) : (
+                  payments
+                    .filter(p => paymentStatusFilter === "all" || p.status === paymentStatusFilter)
+                    .map((p) => (
+                      <tr key={p.id} style={{ borderBottom: "1px solid #eee" }}>
+                        <td style={{ padding: "12px", fontSize: "14px" }}>
+                          {p.date ? (p.date instanceof Date ? p.date.toLocaleString() : new Date(p.date).toLocaleString()) : "-"}
+                        </td>
+                        <td style={{ padding: "12px" }}>{p.phone || "-"}</td>
+                        <td style={{ padding: "12px" }}>{p.amount != null ? Number(p.amount).toLocaleString() : "-"} UGX</td>
+                        <td style={{ padding: "12px" }}>
+                          <span style={{
+                            padding: "4px 8px",
+                            borderRadius: "4px",
+                            fontSize: "12px",
+                            background: p.status === "completed" ? "#e8f5e9" : p.status === "failed" ? "#ffebee" : "#fff3cd",
+                            color: p.status === "completed" ? "#2e7d32" : p.status === "failed" ? "#c62828" : "#856404"
+                          }}>
+                            {p.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: "12px", fontFamily: "monospace", fontSize: "12px" }}>{p.voucher || "-"}</td>
+                        <td style={{ padding: "12px", fontFamily: "monospace", fontSize: "12px" }}>{p.reference || "-"}</td>
+                      </tr>
+                    ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -597,31 +1077,34 @@ export default function Dashboard() {
         </div>
       )}
 
-      {activeTab === "analytics" && (
-        <AnalyticsDashboard />
+      {activeTab === "analytics" && userData?.id && (
+        <AnalyticsDashboard userId={userData.id} />
       )}
     </div>
   );
 }
 
 // Analytics Dashboard Component
-function AnalyticsDashboard() {
+function AnalyticsDashboard({ userId }) {
   const [analyticsData, setAnalyticsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchAnalytics();
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchAnalytics, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    if (userId) {
+      fetchAnalytics();
+      // Refresh every 30 seconds
+      const interval = setInterval(fetchAnalytics, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [userId]);
 
   const fetchAnalytics = async () => {
+    if (!userId) return;
     try {
       setLoading(true);
       setError("");
-      const response = await fetch("/api/analytics");
+      const response = await fetch(`/api/analytics?userId=${userId}`);
       const data = await response.json();
       
       if (data.success) {
