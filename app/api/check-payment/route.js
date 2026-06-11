@@ -46,8 +46,8 @@ export async function POST(request) {
     console.log(`📊 Current payment status: ${payment.status}`);
     console.log(`🆔 Transaction UUID: ${payment.transactionId}`);
     
-    // If we have a transaction UUID, check with MarzPay API
-    if (payment.transactionId && payment.status === 'processing') {
+    // If we have a transaction UUID, verify with MarzPay even if a previous local timeout marked it failed
+    if (payment.transactionId && ['processing', 'failed'].includes(payment.status)) {
       console.log(`🌐 Checking MarzPay API for transaction: ${payment.transactionId}`);
       
       try {
