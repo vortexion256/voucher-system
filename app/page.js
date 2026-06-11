@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { updatePaymentStatus } from "./lib/storage.js";
 import { doc, setDoc, serverTimestamp, addDoc, collection } from "firebase/firestore";
 // import { db } from "@/lib/firebase.js";
 import { db } from "./lib/firebase.js"; // relative path
@@ -280,10 +279,9 @@ const startPaymentPolling = (reference) => {
         clearInterval(pollInterval);
         setPollingInterval(null);
         if (paymentReference === reference) {
-          setError("Payment timeout after 2 minutes. Please check your phone or try again.");
+          setError("Payment is taking longer than expected. Please recheck status in a moment.");
           setPaymentReference(null);
-          setStatusMessage("Payment timeout - please try again");
-          updatePaymentStatus(reference, "failed");
+          setStatusMessage("Payment still processing - please recheck status");
           console.timeEnd(`🔄 Total Polling Time - ${pollingSessionId}`);
         }
       }
@@ -311,13 +309,12 @@ const startPaymentPolling = (reference) => {
       clearInterval(pollInterval);
       setPollingInterval(null);
       if (paymentReference === reference) {
-        setError("Payment timeout after 2 minutes. Please check your phone or try again.");
+        setError("Payment is taking longer than expected. Please recheck status in a moment.");
         setPaymentReference(null);
-        setStatusMessage("Payment timeout - please try again");
-        updatePaymentStatus(reference, "failed");
+        setStatusMessage("Payment still processing - please recheck status");
       }
     }
-  }, maxPolls * 2000);
+  }, maxPolls * 5000 + 5000);
 };
 
 
@@ -1267,7 +1264,6 @@ const startPaymentPolling = (reference) => {
 
 // import React, { useEffect, useRef, useState } from "react";
 // import Image from "next/image";
-// import { updatePaymentStatus } from "./lib/storage.js";
 // import { addDoc, collection, query, where, getDocs, limit } from "firebase/firestore";
 // // import { db } from "@/lib/firebase.js";
 // import { db } from "./lib/firebase.js"; // relative path

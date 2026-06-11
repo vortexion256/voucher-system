@@ -51,8 +51,8 @@ export async function POST(request) {
       });
     }
 
-    // If payment is still processing, check with MarzPay API
-    if (payment.status === "processing" && payment.transactionId) {
+    // Verify with MarzPay for processing payments and locally failed payments that may have timed out
+    if (["processing", "failed"].includes(payment.status) && payment.transactionId) {
       console.log(`🌐 Checking MarzPay API for transaction: ${payment.transactionId}`);
       
       try {
